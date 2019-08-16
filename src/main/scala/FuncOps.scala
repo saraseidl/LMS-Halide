@@ -125,6 +125,9 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
                                              val dom: Domain, val id: Int) {
     def x = vars("x")
     def y = vars("y")
+    //BOUNDS
+    def dim(s: String) = vars(s)
+
     var finalFunc: Boolean = false
 
     val domain = Map("x" -> dom._1, "y" -> dom._2)
@@ -173,6 +176,7 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
     def domWidth = x.max - x.min
     def domHeight = y.max - y.min
 
+    //BOUNDS
     def split(v: String, outer: String, inner: String, splitFactor: Int) = {
       val innerDim = new Dim(0, splitFactor, inner, this)
       // We floor the bottom and ceil at the top to make sure
@@ -180,12 +184,13 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
       val oldDim = vars(v)
       val x = oldDim.max - splitFactor
       val outerDim = new OuterDim(0, (oldDim.max - oldDim.min - splitFactor) / splitFactor,
-          outer, this, oldDim.shadowingName, oldDim.scaleRatio * splitFactor, oldDim, splitFactor)
+        outer, this, oldDim.shadowingName, oldDim.scaleRatio * splitFactor, oldDim, splitFactor)
       vars(v) = new SplitDim(oldDim.min, oldDim.max,
-                             oldDim.name, oldDim.f,
-                             outerDim, innerDim, splitFactor, oldDim)
+        oldDim.name, oldDim.f,
+        outerDim, innerDim, splitFactor, oldDim)
       vars(outer) = outerDim
       vars(inner) = innerDim
+      //update domain?
     }
 
     def fuse(v: String, outer: String, inner: String) = {

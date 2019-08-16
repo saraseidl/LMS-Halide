@@ -209,13 +209,22 @@ trait AstOps extends Ast {
 		insertComputeAtNode(schedLessProducer, producer, newProducerSchedule, newParent)
 	}
 
+	//BOUNDS
 	def computefAtX[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](sched: Schedule, producer: Func[T], consumer: Func[U], s: String): Schedule = {
 		// If f is inlined, create a new sched tree for it.
 		// Else, cut out the current f tree
 		// TODO: Producer consumer checks
-		val computeAtDim: Dim = if (s == "x") consumer.x
-														else if (s == "y") consumer.y
-														else throw new InvalidSchedule(f"Invalid computeAt var $s")
+
+
+		val computeAtDim: Dim = consumer.dim(s) match {
+			case d => d
+			case _ => throw new InvalidSchedule(f"Invalid computeAt var $s")
+		}
+
+		//		if (s == "x") consumer.x
+		//			else if (s == "y") consumer.y
+		//			else throw new InvalidSchedule(f"Invalid computeAt var $s")
+
 		producer.computeAt = Some(computeAtDim)
 		producer.storeAt = Some(computeAtDim)
 
@@ -270,12 +279,19 @@ trait AstOps extends Ast {
 		)
 	}
 
+	//BOUNDS
 	def storefAtX[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](sched: N,
 							  producer: Func[T], consumer: Func[U], s: String): N = {
-		val storeAtDim: Dim = if (s == "x") consumer.x
-														else if (s == "y") consumer.y
-														else throw new InvalidSchedule(f"Invalid computeAt var $s")
 
+
+		val storeAtDim: Dim = consumer.dim(s) match {
+			case d => d
+			case _ => throw new InvalidSchedule(f"Invalid computeAt var $s")
+		}
+
+		//		val storeAtDim: Dim = if (s == "x") consumer.x
+		//														else if (s == "y") consumer.y
+		//														else throw new InvalidSchedule(f"Invalid computeAt var $s")
 		// If no computeAt, storeAt is useless ORDER!
 		val newParent = findLoopNodeFor(sched, storeAtDim).getOrElse(throw new InvalidSchedule("Couldn't find consumer"))
 		producer.storeAt = Some(storeAtDim)

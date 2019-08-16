@@ -74,6 +74,7 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 		}
 	}
 
+	//BOUNDS
 	def computeStorageBounds(stage: Func[_],
 													 boundsGraph: CallGraph,
 												 	 enclosingLoops: Map[(Func[_], String), Dim]): (Rep[Int], Rep[Int]) = {
@@ -86,6 +87,7 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 			val shouldAdjustX = enclosingLoops.keySet contains (v.f, "x")
 			val xDim: Rep[Int] = if (!shouldAdjustX) stage.domWidth else {
 				      BoundsAnalysis
+							//probably: .boundsForProdInCon(boundsGraph, stage.id, v.f.id, v.shadowingName)
 						 .boundsForProdInCon(boundsGraph, stage.id, v.f.id, "x")
 						 .getOrElse(throw new InvalidSchedule(f"No bounds for ${v.name} found"))
 				     .width
@@ -94,6 +96,7 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 			val shouldAdjustY = enclosingLoops.keySet contains (v.f, "y")
 			val yDim: Rep[Int] = if (!shouldAdjustY) stage.domWidth else {
 				      BoundsAnalysis
+							//probably: .boundsForProdInCon(boundsGraph, stage.id, v.f.id, v.shadowingName)
 						 .boundsForProdInCon(boundsGraph, stage.id, v.f.id, "y")
 						 .getOrElse(throw new InvalidSchedule(f"No bounds for ${v.name} found"))
 				     .width

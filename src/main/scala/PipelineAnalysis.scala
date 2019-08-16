@@ -253,8 +253,10 @@ trait PipelineForAnalysis extends DslExp with SymbolicOpsExp
 	 //println(f"res2: ${res(k)}")
 	 val reachableFromLast = reachableFrom(funcsToId(finalFunc.getOrElse(throw new Exception())), res)
 	 for (i <- 0 to id-1: Range) {
-		 if (!reachableFromLast.contains(i)) {
+		 //CHANGELOG
+		 if (!reachableFromLast.contains(i) && !(funcsToId(finalFunc.getOrElse(throw new Exception())) == i)) {
 			 val name = funcNames.getOrElse(i, "")
+
 			 println(f"Warning: function $i, ${name}, is not reachable from the final func")
 		 }
 	 }
