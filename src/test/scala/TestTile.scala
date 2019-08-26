@@ -8,7 +8,7 @@ trait TileIng extends TestPipeline {
       (x: Rep[Int], y: Rep[Int]) => in(x, y) * 2
     }
     val g = final_func[Int] {
-      (x: Rep[Int], y: Rep[Int]) => f(x, y) / 2
+      (x: Rep[Int], y: Rep[Int]) => f(x+1, y) / 2
     }
 
     g.split("y", "y_outer", "y_inner", 2)
@@ -17,7 +17,6 @@ trait TileIng extends TestPipeline {
 
     registerFunction("g", g)
     registerFunction("f", f)
-
   }
 }
 
@@ -30,3 +29,5 @@ class TestTile extends FlatSpec {
     test.compile(testAnalysis.getBoundsGraph, "very_testy")
   }
 }
+
+

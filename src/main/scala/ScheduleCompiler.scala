@@ -5,6 +5,8 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 	def computeLoopBounds(variable: Dim, stage: Func[_],
 												boundsGraph: CallGraph,
 												enclosingLoops: Map[(Func[_], String), Dim]): (Rep[Int], Rep[Int]) = {
+
+		println("...loopBounds")
 		if (variable.isInstanceOf[FusedDim]) {
 			val fusedVariable = variable.asInstanceOf[FusedDim]
 			val innerBounds = computeSimpleLoopBounds(fusedVariable.inner, stage,
@@ -22,6 +24,7 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 			variable.shadowingUb_=(upperBound)
 			(lowerBound, upperBound)
 		} else if (variable.isInstanceOf[OuterDim]) {
+			// redundancy?
 			val outerVariable = variable.asInstanceOf[OuterDim]
 			val normalBounds = computeSimpleLoopBounds(outerVariable.old, stage, boundsGraph, enclosingLoops)
 			val a = normalBounds._1
@@ -35,6 +38,7 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 			variable.looplb_=(lowerBound)
 			variable.loopub_=(upperBound)
 			variable.shadowingUb_=(b)
+			println(lowerBound, upperBound)
 			(lowerBound, upperBound)
 		} else computeSimpleLoopBounds(variable, stage, boundsGraph, enclosingLoops)
 	}
@@ -42,64 +46,93 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 	def computeSimpleLoopBounds(variable: Dim, stage: Func[_],
 															boundsGraph: CallGraph,
 															enclosingLoops: Map[(Func[_], String), Dim]): (Rep[Int], Rep[Int]) = {
+		println(f"......simple LB of stage: $stage, variable: $variable")
 		if (stage.inlined) throw new InvalidSchedule(f"Inlined function $stage should have no loops")
 		else if (stage.computeRoot) {
+			println(".........compute Root")
 			variable.looplb_=(variable.min)
 			variable.loopub_=(variable.max)
 			variable.shadowingUb_=(stage.vars(variable.shadowingName).max)
+			println((variable.min, variable.max))
 			(variable.min, variable.max)
 		} else {
 			val v = stage.computeAt
 							.getOrElse(throw new InvalidSchedule(f"Non-inlined function $stage has no computeAt variable"))
+			// shadowingName?
 			val shouldAdjust = enclosingLoops.keySet contains (v.f, variable.shadowingName)
-
+			println(f".........enclosing Loops: $enclosingLoops")
 			if (!shouldAdjust) {
 				variable.looplb_=(variable.min)
 				variable.loopub_=(variable.max)
 				variable.shadowingUb_=(stage.vars(variable.shadowingName).max)
+				println((variable.min, variable.max))
 				(variable.min, variable.max)
 			}
 			else {
-				val baseVar = enclosingLoops((v.f, variable.shadowingName))
+
+				// JUST COMPUTE INNER
+				val baseVar = enclosingLoops((v.f, variable.name))
+				val baseVar2 = enclosingLoops((v.f, v.shadowingName))
+				println(f".........baseVar: ${enclosingLoops((v.f, variable.name))}, baseVar2: ${enclosingLoops((v.f, v.shadowingName))}")
+
+				// CHANGELOG:
+				// before: variable.shadowingName needs to be x or y ? TOTO check deeper nesting
 				val bound = BoundsAnalysis
-						 .boundsForProdInCon(boundsGraph, stage.id, v.f.id, variable.shadowingName)
+						 .boundsForProdInCon(boundsGraph, stage.id, v.f.id, variable.name)
 						 .getOrElse(throw new InvalidSchedule(f"No bounds for ${v.name} found"))
-			  val unadjLb = bound.mulLower * baseVar.v / bound.divLower + bound.lb
-				val unadjUb = bound.mulHigher * baseVar.v / bound.divHigher + bound.ub
+
+				// JUST COMPUTE INNER
+				val unadjLb = baseVar2 match {
+					case b if b == baseVar => bound.mulLower * baseVar.v * baseVar.scaleRatio / bound.divLower + bound.lb
+					case b =>  bound.mulLower * (baseVar.v * baseVar.scaleRatio + b.v) / bound.divLower + bound.lb
+				}
+
+				val unadjUb = baseVar2 match {
+					case b if b == baseVar => bound.mulHigher * baseVar.v * baseVar.scaleRatio / bound.divHigher + bound.ub
+					case b =>  bound.mulHigher * (baseVar.v * baseVar.scaleRatio + b.v) / bound.divHigher + bound.ub
+
+				}
+
+//			  val unadjLb = bound.mulLower * baseVar.v / bound.divLower + bound.lb
+//				val unadjUb = bound.mulHigher * baseVar.v / bound.divHigher + bound.ub
 			  variable.looplb_=(unadjLb)
 				variable.shadowingUb_=(unadjUb + 1)
 				variable.loopub_=(unadjUb + 1)
+				println((unadjLb, unadjUb + 1))
 				(unadjLb, unadjUb + 1)
 			}
 		}
 	}
 
 	//BOUNDS
+	//scale dim
 	def computeStorageBounds(stage: Func[_],
 													 boundsGraph: CallGraph,
 												 	 enclosingLoops: Map[(Func[_], String), Dim]): (Rep[Int], Rep[Int]) = {
+		println()
+		println("...storage Bounds")
 		if (stage.inlined) throw new InvalidSchedule(f"Inlined function $stage should have no storage")
 		else if (stage.storeRoot) (stage.domWidth, stage.domHeight)
 		else {
 			val v = stage.storeAt
 							.getOrElse(throw new InvalidSchedule(f"Non-inlined function $stage has no storeAt"))
-
+			println(f"......storing at $v dim with scaleRatio ${v.scaleRatio}")
+			println(f"......enclosingLoops: $enclosingLoops")
 			val shouldAdjustX = enclosingLoops.keySet contains (v.f, "x")
 			val xDim: Rep[Int] = if (!shouldAdjustX) stage.domWidth else {
 				      BoundsAnalysis
-							//probably: .boundsForProdInCon(boundsGraph, stage.id, v.f.id, v.shadowingName)
-						 .boundsForProdInCon(boundsGraph, stage.id, v.f.id, "x")
-						 .getOrElse(throw new InvalidSchedule(f"No bounds for ${v.name} found"))
-				     .width
+							.boundsForProdInCon(boundsGraph, stage.id, v.f.id, "x")
+						  .getOrElse(throw new InvalidSchedule(f"No bounds for ${v.name} found"))
+				      .width - 1 + v.scaleRatio
 			}
 
+			//outer dim
 			val shouldAdjustY = enclosingLoops.keySet contains (v.f, "y")
 			val yDim: Rep[Int] = if (!shouldAdjustY) stage.domWidth else {
 				      BoundsAnalysis
-							//probably: .boundsForProdInCon(boundsGraph, stage.id, v.f.id, v.shadowingName)
 						 .boundsForProdInCon(boundsGraph, stage.id, v.f.id, "y")
 						 .getOrElse(throw new InvalidSchedule(f"No bounds for ${v.name} found"))
-				     .width
+				     .width - 1 + v.scaleRatio
 			}
 
 			(xDim, yDim)
@@ -148,11 +181,14 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 												    completeTree: ScheduleNode,
 											 	    boundsGraph: CallGraph,
 														enclosingLoops: Map[(Func[_], String), Dim]): Rep[Boolean] = {
+
+		println("NotComputed")
 			if (stage.computeRoot) true
 			else {
 				val computeAtFunc: Func[_] = stage.computeAt.getOrElse(throw new InvalidSchedule("non-inlined function has no compute at")).f
 				val relevantEnclosingLoops = getLoopsAfterSN(stage, completeTree).filterKeys(_._1 == computeAtFunc)
 
+				println(f"Relevant enclosing loops: $relevantEnclosingLoops")
 				val relevantBounds: Map[String, Bound] =
 					for (((f, name), d) <- relevantEnclosingLoops)
 							yield name -> {
@@ -185,16 +221,16 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 			sn match {
 				case StorageNode(f, _) => {
 					if (f.computeRoot) {
+						print("......compute root:")
 						// variable.min
-						println("getting offsets from compute root:")
-
-						f.vars.map({case (k, v) => {
-							val bound = BoundsAnalysis
-									 .boundsForProdInCon(boundsGraph, -1, f.id, k)
-									 .getOrElse(Bound(0, 0, 1, 1, 1, 1))
-							println(f"bound for offset: $bound")
-							(k, v.min)}}).toList
+						// CHANGELOG:BOUNDS - only x/y bounds?
+						f.vars.filterKeys( k => k == "x" || k == "y" ).map({ case (k, v) =>
+								val bound = BoundsAnalysis
+										 .boundsForProdInCon(boundsGraph, -1, f.id, k)
+										 .getOrElse(Bound(0, 0, 1, 1, 1, 1))
+								(k, v.min)}).toList
 					} else {
+						print("......not compute root:")
 						// if a loop node is above sn, offset = lb
 						// otherwise, offset = variable.min
 						def getAdjustment(consumer: Func[_], name: String) = {
@@ -205,9 +241,26 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 							baseVar.v + bound.lb * bound.mulLower / bound.divLower
 						}
 
+						// JUST COMPUTE INNER
+						def getAdjustmentTest(consumer: Func[_], dim: String, name: String) = {
+							val baseVar = enclosingLoops((consumer, name))
+							val baseVar2 = enclosingLoops((consumer, dim))
+
+							val bound = BoundsAnalysis
+								.boundsForProdInCon(boundsGraph, f.id, consumer.id, name)
+								.getOrElse(throw new InvalidSchedule(f"No bounds for ${name} found"))
+
+
+							baseVar2 match {
+								case b if b == baseVar => baseVar.v * baseVar.scaleRatio + bound.lb * bound.mulLower / bound.divLower
+								case b => baseVar.v * baseVar.scaleRatio + b.v + bound.lb * bound.mulLower / bound.divLower
+							}
+						}
+
 						val computeAtFunc = f.computeAt.getOrElse(throw new InvalidSchedule("No compute at for non inlined function")).f
+						val computeAtName = f.computeAt.getOrElse(throw new InvalidSchedule("No compute at for non inlined function")).shadowingName
 						f.vars.map({case (name, v) =>
-							(name, if (enclosingLoops.keySet.contains((computeAtFunc, name))) getAdjustment(computeAtFunc, name) else v.min)
+							(name, if (enclosingLoops.keySet.contains((computeAtFunc, name))) getAdjustmentTest(computeAtFunc, computeAtName ,name) else v.min)
 						}).toList
 					}
 				}
@@ -220,6 +273,8 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 							  completeTree: ScheduleNode): Rep[Unit] = {
 		node match {
     case LoopNode(variable, stage, loopType, children) =>
+			println()
+			println("evalLoop:")
 			val (lb, ub) = computeLoopBounds(variable, stage, boundsGraph, enclosingLoops)
       loopType match {
         case Sequential() =>
@@ -265,26 +320,32 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
       }
 
     case ComputeNode(stage, children) => {
-			if (notPreviouslyComputed(stage, completeTree, boundsGraph, enclosingLoops)) {
-				println("Computing")
+			println()
+			println("evalCompute:")
+			//if (notPreviouslyComputed(stage, completeTree, boundsGraph, enclosingLoops)) {
 				val v = stage.compute()
 	      stage.storeInBuffer(v)
-			}
+			//}
       for (child <- children) evalSched(child, boundsGraph, enclosingLoops, completeTree)
     }
 
  	  case StorageNode(stage, children) => {
+			println()
+			println("evalStore:")
 
 			val dims = computeStorageBounds(stage, boundsGraph, enclosingLoops)
 			stage.allocateNewBuffer(dims._1, dims._2)
 			val offsets = getOffsets(enclosingLoops, node, boundsGraph)
-			println(f"offsets: $offsets")
 			stage.setOffsets(offsets)
+			println(f"...Offsets: $offsets")
+
    	 	for (child <- children) evalSched(child, boundsGraph, enclosingLoops, completeTree)
 			stage.deallocBuffer()
  	  }
 
     case RootNode(children) => {
+			println()
+			println("evalRoot:")
       for (child <- children) evalSched(child, boundsGraph, enclosingLoops, completeTree)
     }
   }}

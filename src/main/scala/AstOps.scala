@@ -225,8 +225,12 @@ trait AstOps extends Ast {
 		//			else if (s == "y") consumer.y
 		//			else throw new InvalidSchedule(f"Invalid computeAt var $s")
 
+    //CHANGELOG
 		producer.computeAt = Some(computeAtDim)
-		producer.storeAt = Some(computeAtDim)
+		producer.storeAt = producer.storeAt match {
+      case Some(dim) => Some(dim)
+      case None => Some(computeAtDim)
+    }
 
 		val deInlinedSched = if (producer.inlined) {
 			producer.inlined = false
@@ -282,7 +286,6 @@ trait AstOps extends Ast {
 	//BOUNDS
 	def storefAtX[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](sched: N,
 							  producer: Func[T], consumer: Func[U], s: String): N = {
-
 
 		val storeAtDim: Dim = consumer.dim(s) match {
 			case d => d

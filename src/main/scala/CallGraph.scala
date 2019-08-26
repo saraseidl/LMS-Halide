@@ -12,6 +12,19 @@ class CallGraph(a: Map[Int, List[Int]], ws: Map[(Int, Int), Edge]) {
     weights((consumer, producer)).bounds(v)
   }
 
+  def printBounds(): Unit = {
+    println("Bounds:")
+    weights.foreach({case(p,e) =>
+        println(f"Funcs(p -> c): ${p._2} -> ${p._1}")
+        e.bounds.foreach({case (x, b) =>
+            print(f"var $x with bound lower:")
+            print(b.lb)
+            print(", upper:")
+            println(b.ub)
+        })
+    })
+  }
+
   def isProducerConsumer(producer: Int, consumer: Int) = {
     weights.contains((consumer, producer))
   }

@@ -240,7 +240,7 @@ trait PipelineForAnalysis extends DslExp with SymbolicOpsExp
 		// f calls functions g1, g2 with (a, b) a bound on
 		// g1's input and (c, d) a bound on g2's input.
 		val symbolicInput = Buffer(0, 0, newSymbolicArray())
-		prog(symbolicInput, newSymbolicInt("w"), newSymbolicInt("h"))
+		prog(symbolicInput, 8, 3)
 		val res = funcsToId.map( { case (f, id) => {
 			(id -> getInputTransformations(
 														 f(newSymbolicInt("x"), newSymbolicInt("y"))))

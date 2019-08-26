@@ -9,8 +9,10 @@ trait SimpleFuncOps extends Dsl {
   type Domain = ((Rep[Int], Rep[Int]), (Rep[Int], Rep[Int]))
 
   class FuncOps[T:Typ:Numeric:SepiaNum](f: Func[T]) {
-    def apply(x: Rep[Int], y: Rep[Int]) =
+    def apply(x: Rep[Int], y: Rep[Int]) = {
       funcApply(f, x, y)
+    }
+
   }
 
   implicit def funcToFuncOps[T:Typ:Numeric:SepiaNum](f: Func[T]) = new FuncOps(f)
@@ -79,6 +81,7 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
     val pseudoLoops: Map[(Func[_], String), Dim] = Map((f, shadowingName) -> this)
 	}
 
+  //BOUNDS
   class SplitDim(min: Rep[Int], max: Rep[Int], name: String, f: Func[_],
                  val outer: Dim, val inner: Dim, val splitFactor: Int, val old: Dim) extends Dim(min, max, name, f) {
       override def v: Rep[Int] = {
@@ -89,6 +92,7 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
         clampedOuter + inner.v + old.looplb
 
       }
+
       override def v_=(new_val: Rep[Int]) = {
         throw new Exception("Error: should not be directly assigning to a split variable")
       }
@@ -105,6 +109,12 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
       override val shadowingName = sName
       def setOldLoopOffset(v: Rep[Int]) {
         old.loopub_=(v)
+      }
+      // CHANGELOG: override for now to map correctly (otherwise shadowing Name is null)
+      override val pseudoLoops: Map[(Func[_], String), Dim] = Map((f, shadowingName) -> this)
+
+      override def v_=(new_val: Rep[Int]) = {
+        value = Some(new_val)
       }
   }
 
@@ -144,17 +154,21 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
     override def toString(): String = id.toString
 
     def compute() = {
+
+      println(f"x.v(${x.v}), y.v(${y.v})")
       f(x.v, y.v)
     }
 
-    def storeInBuffer(vs: RGBVal[T]) = buffer match {
+    def storeInBuffer(vs: RGBVal[T]) = {
+      println(f"Storing at: x.v=${x.v}, x.v - x.dimOffset=${x.v - x.dimOffset}")
+      println(f"Storing at: y.v=${y.v}, y.v - y.dimOffset=${y.v -y.dimOffset}")
+      buffer match {
       case Some(b) => b(x.v - x.dimOffset, y.v - y.dimOffset) = vs
       case None => throw new InvalidSchedule(f"No buffer allocated at storage time for ")
-    }
+    }}
 
     def setOffsets(offsets: List[(String, Rep[Int])]) = {
       offsets.foreach({case (v, off) => {
-        println(f"offset: $off")
         vars(v).dimOffset_=(off)
       }})
     }
@@ -169,28 +183,28 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
     }
 
     def allocateNewBuffer(m: Rep[Int], n: Rep[Int]) {
-      println(f"Buffer allocation: $id has type ${typ[T]}")
+      println(f"......Buffer allocation: Func $id has type ${typ[T]}")
       buffer = Some(NewBuffer[T](m, n))
     }
 
     def domWidth = x.max - x.min
     def domHeight = y.max - y.min
 
-    //BOUNDS
+    // BOUNDS
     def split(v: String, outer: String, inner: String, splitFactor: Int) = {
-      val innerDim = new Dim(0, splitFactor, inner, this)
       // We floor the bottom and ceil at the top to make sure
       // that we hit every value
+
       val oldDim = vars(v)
-      val x = oldDim.max - splitFactor
+      val innerDim = new Dim(0, splitFactor , inner, this)
       val outerDim = new OuterDim(0, (oldDim.max - oldDim.min - splitFactor) / splitFactor,
         outer, this, oldDim.shadowingName, oldDim.scaleRatio * splitFactor, oldDim, splitFactor)
+
       vars(v) = new SplitDim(oldDim.min, oldDim.max,
         oldDim.name, oldDim.f,
         outerDim, innerDim, splitFactor, oldDim)
       vars(outer) = outerDim
       vars(inner) = innerDim
-      //update domain?
     }
 
     def fuse(v: String, outer: String, inner: String) = {
@@ -204,12 +218,14 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
   type Func[T] = CompilerFunc[T]
 
   override def funcApply[T:Typ:Numeric:SepiaNum](f: Func[T], x: Rep[Int], y: Rep[Int]): RGBVal[T] = {
-    //println(f"computing ${f.id}")
+    println(f"computing ${f.id}")
     nApps += 1
     if (f.inlined) f.f(x, y)
     else {
         val r = f.buffer
                  .getOrElse(throw new InvalidSchedule(f"No buffer allocated at application time for ${f.id}"))(x - f.x.dimOffset, y - f.y.dimOffset)
+        println(f"x=(${x}, y=${y})")
+        println(f"Buffer.at(${x - f.x.dimOffset}, ${y - f.y.dimOffset})")
         new RGBVal(r.red, r.green, r.blue)
     }
   }
