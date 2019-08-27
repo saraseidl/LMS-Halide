@@ -6,13 +6,16 @@ trait Blur extends TestPipeline {
     val f = func[Short] {
       (x: Rep[Int], y: Rep[Int]) => in(x, y) / 1.toShort
     }
-    val g = final_func[Short] {
-      (x: Rep[Int], y: Rep[Int]) => f(x, y)
+    val g = func[Short] {
+      (x: Rep[Int], y: Rep[Int]) => f(x,y)
+    }
+    val h = final_func[Short] {
+      (x: Rep[Int], y: Rep[Int]) => g(x, y)
     }
 
-    g.split("y", "y_outer", "y_inner", 4)
+    g.tile("x", "y", "x_outer", "y_outer", "x_inner", "y_inner", 4, 4)
     f.computeAt(g, "y_outer")
-    //f.storeAt(g, "y_outer")
+//    f.storeAt(g, "y_outer")
 
     registerFunction("g", g)
     registerFunction("f", f)
@@ -29,3 +32,4 @@ class BlurEx extends FlatSpec {
     blur.compile(blurAnalysis.getBoundsGraph, "blurry")
   }
 }
+

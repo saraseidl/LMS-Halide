@@ -289,16 +289,24 @@ trait AstOps extends Ast {
 
 		val storeAtDim: Dim = consumer.dim(s) match {
 			case d => d
-			case _ => throw new InvalidSchedule(f"Invalid computeAt var $s")
+			case _ => throw new InvalidSchedule(f"Invalid storeAt var $s")
 		}
 
 		//		val storeAtDim: Dim = if (s == "x") consumer.x
 		//														else if (s == "y") consumer.y
 		//														else throw new InvalidSchedule(f"Invalid computeAt var $s")
 		// If no computeAt, storeAt is useless ORDER!
-		val newParent = findLoopNodeFor(sched, storeAtDim).getOrElse(throw new InvalidSchedule("Couldn't find consumer"))
-		producer.storeAt = Some(storeAtDim)
-		storeAtNode(sched, producer, newParent)
+
+		// nothing if already stored at that dim (other case does not handle this)
+		producer.storeAt match {
+			case Some(dim) if dim == storeAtDim => sched
+			case _ => {
+				producer.storeAt = Some(storeAtDim)
+
+				val newParent = findLoopNodeFor(sched, storeAtDim).getOrElse(throw new InvalidSchedule("Couldn't find consumer"))
+				storeAtNode(sched, producer, newParent)
+			}
+		}
 	}
 
 	def storeAtRoot[T:Typ:Numeric:SepiaNum](sched: N, producer: Func[T]): N = {

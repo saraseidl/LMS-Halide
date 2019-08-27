@@ -20,7 +20,6 @@ object BoundsAnalysis {
           (validProducers zip nextBounds).map{
             case (p, b) => b add boundsGraph.getBound(p, cons, v)
           }
-        println(boundsGraph.getBound(validProducers(0), cons, v))
         // And now collect them all together (horizontal join)
         Some(adjustedBounds.fold(Bound.zero)(_ join _))
       }
