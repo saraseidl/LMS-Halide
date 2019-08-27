@@ -92,13 +92,13 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
   //BOUNDS
   class SplitDim(min: Rep[Int], max: Rep[Int], name: String, f: Func[_],
                  val outer: Dim, val inner: Dim, val splitFactor: Int, val old: Dim) extends Dim(min, max, name, f) {
-      override def v: Rep[Int] = {
+      def vOld: Rep[Int] = {
         val clampedOuter: Rep[Int] =
           if (outer.v * splitFactor + old.looplb > outer.shadowingUb - splitFactor) outer.shadowingUb - splitFactor - old.looplb
           else outer.v * splitFactor
         //clampedOuter + inner.v
+        // f.vars(inner.shadowingName) to get multiple??
         clampedOuter + inner.v + old.looplb
-
       }
 
       override def v_=(new_val: Rep[Int]) = {
@@ -107,6 +107,20 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
 
       override def dimOffset: Rep[Int] = {
         super.dimOffset
+      }
+
+      //CHANGELOG uspicious!
+      override def v: Rep[Int] = {
+        val clampedOuter: Rep[Int] =
+          if (outer.v * splitFactor + old.looplb > outer.shadowingUb - splitFactor) outer.shadowingUb - splitFactor - old.looplb
+          else outer.v * splitFactor
+
+        try {
+          // f.vars(inner.shadowingName) to get multiple??
+          clampedOuter + inner.v + old.looplb
+        } catch {
+          case sched: InvalidSchedule => clampedOuter + old.looplb
+        }
       }
   }
 
@@ -171,6 +185,7 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
     def compute() = {
 
       println(f"...x.v(${x.v}), y.v(${y.v})")
+      println(f"...instance ouf split ${y}")
       f(x.v, y.v)
     }
 

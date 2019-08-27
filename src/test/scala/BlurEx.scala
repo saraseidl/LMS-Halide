@@ -3,22 +3,28 @@ import org.scalatest.FlatSpec
 
 trait Blur extends TestPipeline {
   override def prog(in: Input, w: Rep[Int], h: Rep[Int]): Rep[Unit] = {
-    val f = func[Short] {
+    val g = func[Short] {
       (x: Rep[Int], y: Rep[Int]) => in(x, y) / 1.toShort
     }
-    val g = func[Short] {
-      (x: Rep[Int], y: Rep[Int]) => f(x,y)
-    }
-    val h = final_func[Short] {
+    val i = final_func[Short] {
       (x: Rep[Int], y: Rep[Int]) => g(x, y)
     }
 
-    g.tile("x", "y", "x_outer", "y_outer", "x_inner", "y_inner", 4, 4)
-    f.computeAt(g, "y_outer")
-//    f.storeAt(g, "y_outer")
+    i.tile("x", "y", "x_outer", "y_outer", "x_inner", "y_inner", 4, 4)
+    g.computeAt(i, "y_inner")
 
     registerFunction("g", g)
-    registerFunction("f", f)
+    registerFunction("i", i)
+
+
+//    g.tile("x", "y", "x_outer", "y_outer", "x_inner", "y_inner", 4, 4)
+//    //g.split("y", "y_outer", "y_inner", 4)
+//    //g.split("y_inner", "y_inner1", "y_inner2", 2)
+//    f.computeAt(g, "x_inner")
+//    f.storeAt(g, "x_outer")
+
+//    registerFunction("g", g)
+//    registerFunction("f", f)
 
   }
 }

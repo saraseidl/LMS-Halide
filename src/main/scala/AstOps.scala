@@ -215,7 +215,6 @@ trait AstOps extends Ast {
 		// Else, cut out the current f tree
 		// TODO: Producer consumer checks
 
-
 		val computeAtDim: Dim = consumer.dim(s) match {
 			case d => d
 			case _ => throw new InvalidSchedule(f"Invalid computeAt var $s")

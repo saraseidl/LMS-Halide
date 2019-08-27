@@ -5,100 +5,101 @@ int32_t x4 = x2 - 1;
 int32_t x7 = x4 - -1;
 int32_t x8 = x7 * x3;
 int32_t x9 = x8 * 3;
-UCHAR *x104 = malloc(sizeof(UCHAR) * x9);
+UCHAR *x105 = malloc(sizeof(UCHAR) * x9);
 int32_t x11 = x3 + 2;
 int32_t x12 = x11 - 1;
 int32_t x13 = x12 / 2;
 int32_t x16 = x2 * 2;
 int32_t x17 = x16 * 3;
-int32_t x30 = x3 - 1;
 int32_t x5 = x3 - 2;
+int32_t x34 = x3 - 1;
 for(int x15=0; x15 < x13; x15++) {
-int32_t *x105 = malloc(sizeof(int32_t) * x17);
+int32_t *x106 = malloc(sizeof(int32_t) * x17);
 int32_t x19 = x15 * 2;
-bool x62 = x19 > x5;
-int32_t x63;
-if (x62) {
-x63 = x5;
+bool x20 = x19 > x5;
+int32_t x21;
+if (x20) {
+x21 = x5;
 } else {
-x63 = x19;
+x21 = x19;
 }
-for(int x21=0; x21 < 2; x21++) {
-int32_t x22 = x19 + x21;
-int32_t x23 = x22 + 1;
-for(int x25=x22; x25 < x23; x25++) {
-int32_t x31 = MIN(x25, x30);
-int32_t x32 = MAX(0, x31);
-int32_t x33 = x2 * x32;
-int32_t x47 = x25 - x19;
-int32_t x48 = x2 * x47;
-for(int x27=0; x27 < x2; x27++) {
-int32_t x28 = MIN(x27, x4);
-int32_t x29 = MAX(0, x28);
-int32_t x34 = x29 + x33;
-int32_t x35 = 3 * x34;
-int32_t x36 = x35 + 2;
-UCHAR x37 = x0[x36];
-int32_t x41 = (int32_t) x37;
-int32_t x44 = x41 * 2;
-int32_t x49 = x27 + x48;
-int32_t x50 = 3 * x49;
-int32_t x51 = x50 + 2;
-x105[x51] = x44;
-int32_t x38 = x35 + 1;
-UCHAR x39 = x0[x38];
-int32_t x42 = (int32_t) x39;
-int32_t x45 = x42 * 2;
-int32_t x53 = x50 + 1;
-x105[x53] = x45;
-UCHAR x40 = x0[x35];
-int32_t x43 = (int32_t) x40;
-int32_t x46 = x43 * 2;
-x105[x50] = x46;
+for(int x23=0; x23 < 2; x23++) {
+int32_t x24 = x21 + x23;
+int32_t x25 = x24 + 2;
+int32_t x26 = x25 - 1;
+int32_t x27 = x26 + 1;
+for(int x29=x24; x29 < x27; x29++) {
+int32_t x35 = MIN(x29, x34);
+int32_t x36 = MAX(0, x35);
+int32_t x37 = x2 * x36;
+int32_t x51 = x29 - x21;
+int32_t x52 = x2 * x51;
+for(int x31=0; x31 < x2; x31++) {
+int32_t x32 = MIN(x31, x4);
+int32_t x33 = MAX(0, x32);
+int32_t x38 = x33 + x37;
+int32_t x39 = 3 * x38;
+int32_t x40 = x39 + 2;
+UCHAR x41 = x0[x40];
+int32_t x45 = (int32_t) x41;
+int32_t x48 = x45 * 2;
+int32_t x53 = x31 + x52;
+int32_t x54 = 3 * x53;
+int32_t x55 = x54 + 2;
+x106[x55] = x48;
+int32_t x42 = x39 + 1;
+UCHAR x43 = x0[x42];
+int32_t x46 = (int32_t) x43;
+int32_t x49 = x46 * 2;
+int32_t x57 = x54 + 1;
+x106[x57] = x49;
+UCHAR x44 = x0[x39];
+int32_t x47 = (int32_t) x44;
+int32_t x50 = x47 * 2;
+x106[x54] = x50;
 
 }
 
 }
-int32_t x64 = x63 + x21;
-int32_t x66 = x64 - x19;
-int32_t x69 = MIN(x66, 1);
-int32_t x70 = MAX(0, x69);
-int32_t x71 = x2 * x70;
-int32_t x86 = x7 * x64;
-for(int x61=-1; x61 < x4; x61++) {
-int32_t x65 = x61 + 1;
-int32_t x67 = MIN(x65, x4);
-int32_t x68 = MAX(0, x67);
-int32_t x72 = x68 + x71;
-int32_t x73 = 3 * x72;
-int32_t x74 = x73 + 2;
-int32_t x113 = x105[x74];
-int32_t x76 = x73 + 1;
-int32_t x114 = x105[x76];
-int32_t x115 = x105[x73];
-int32_t x85 = x61 - -1;
-int32_t x87 = x85 + x86;
-int32_t x88 = 3 * x87;
-int32_t x89 = x88 + 2;
-int32_t x116 = x113 / 2;
-UCHAR x117 = (UCHAR) x116;
-x104[x89] = x117;
-int32_t x91 = x88 + 1;
-int32_t x119 = x114 / 2;
-UCHAR x120 = (UCHAR) x119;
-x104[x91] = x120;
-int32_t x122 = x115 / 2;
-UCHAR x123 = (UCHAR) x122;
-x104[x88] = x123;
+int32_t x67 = x24 - x21;
+int32_t x70 = MIN(x67, 1);
+int32_t x71 = MAX(0, x70);
+int32_t x72 = x2 * x71;
+int32_t x87 = x7 * x24;
+for(int x65=-1; x65 < x4; x65++) {
+int32_t x66 = x65 + 1;
+int32_t x68 = MIN(x66, x4);
+int32_t x69 = MAX(0, x68);
+int32_t x73 = x69 + x72;
+int32_t x74 = 3 * x73;
+int32_t x75 = x74 + 2;
+int32_t x114 = x106[x75];
+int32_t x77 = x74 + 1;
+int32_t x115 = x106[x77];
+int32_t x116 = x106[x74];
+int32_t x86 = x65 - -1;
+int32_t x88 = x86 + x87;
+int32_t x89 = 3 * x88;
+int32_t x90 = x89 + 2;
+int32_t x117 = x114 / 2;
+UCHAR x118 = (UCHAR) x117;
+x105[x90] = x118;
+int32_t x92 = x89 + 1;
+int32_t x120 = x115 / 2;
+UCHAR x121 = (UCHAR) x120;
+x105[x92] = x121;
+int32_t x123 = x116 / 2;
+UCHAR x124 = (UCHAR) x123;
+x105[x89] = x124;
 
 }
 
 }
+free(x106);
+
+}
+memcpy(x1, x105, x9);
 free(x105);
-
-}
-memcpy(x1, x104, x9);
-free(x104);
 }
 int32_t WIDTH_OUT_DIFF = 0;
 int32_t HEIGHT_OUT_DIFF = 0;
