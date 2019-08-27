@@ -213,11 +213,25 @@ trait AstOps extends Ast {
 		// If f is inlined, create a new sched tree for it.
 		// Else, cut out the current f tree
 		// TODO: Producer consumer checks
-		val computeAtDim: Dim = if (s == "x") consumer.x
-														else if (s == "y") consumer.y
-														else throw new InvalidSchedule(f"Invalid computeAt var $s")
+
+		// CHANGE - computeAt
+		// val computeAtDim: Dim = if (s == "x") consumer.x
+	  //											else if (s == "y") consumer.y
+		// 											else throw new InvalidSchedule(f"Invalid computeAt var $s")
+
+		val computeAtDim: Dim = consumer.dim(s) match {
+			case d => d
+			case _ => throw new InvalidSchedule(f"Invalid computeAt var $s")
+		}
+
+		// CHANGE - computeAt
+		// producer.storeAt = Some(computeAtDim)
+		// If no computeAt, storeAt is useless ORDER! => not?
 		producer.computeAt = Some(computeAtDim)
-		producer.storeAt = Some(computeAtDim)
+		producer.storeAt = producer.storeAt match {
+			case Some(dim) => Some(dim)
+			case None => Some(computeAtDim)
+		}
 
 		val deInlinedSched = if (producer.inlined) {
 			producer.inlined = false
@@ -272,14 +286,27 @@ trait AstOps extends Ast {
 
 	def storefAtX[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](sched: N,
 							  producer: Func[T], consumer: Func[U], s: String): N = {
-		val storeAtDim: Dim = if (s == "x") consumer.x
-														else if (s == "y") consumer.y
-														else throw new InvalidSchedule(f"Invalid computeAt var $s")
+
+		// CHANGE - storeAt
+		// val storeAtDim: Dim = if (s == "x") consumer.x
+		// 											else if (s == "y") consumer.y
+		//											else throw new InvalidSchedule(f"Invalid computeAt var $s")
+
+		val storeAtDim: Dim = consumer.dim(s) match {
+			case d => d
+			case _ => throw new InvalidSchedule(f"Invalid storeAt var $s")
+		}
 
 		// If no computeAt, storeAt is useless ORDER!
-		val newParent = findLoopNodeFor(sched, storeAtDim).getOrElse(throw new InvalidSchedule("Couldn't find consumer"))
-		producer.storeAt = Some(storeAtDim)
-		storeAtNode(sched, producer, newParent)
+		// do nothing if already stored at that dim (other case does not handle this) -> check again in this v
+		producer.storeAt match {
+			case Some(dim) if dim == storeAtDim => sched
+			case _ => {
+				producer.storeAt = Some(storeAtDim)
+				val newParent = findLoopNodeFor(sched, storeAtDim).getOrElse(throw new InvalidSchedule("Couldn't find consumer"))
+				storeAtNode(sched, producer, newParent)
+			}
+		}
 	}
 
 	def storeAtRoot[T:Typ:Numeric:SepiaNum](sched: N, producer: Func[T]): N = {

@@ -81,7 +81,8 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
 
   class SplitDim(min: Rep[Int], max: Rep[Int], name: String, f: Func[_],
                  val outer: Dim, val inner: Dim, val splitFactor: Int, val old: Dim) extends Dim(min, max, name, f) {
-      override def v: Rep[Int] = {
+      // use this
+      def vOld: Rep[Int] = {
         val clampedOuter: Rep[Int] =
           if (outer.v * splitFactor + old.looplb > outer.shadowingUb - splitFactor) outer.shadowingUb - splitFactor - old.looplb
           else outer.v * splitFactor
@@ -89,6 +90,20 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
         clampedOuter + inner.v + old.looplb
 
       }
+      // CHANGE HACKY not use always
+      override def v: Rep[Int] = {
+        val clampedOuter: Rep[Int] =
+          if (outer.v * splitFactor + old.looplb > outer.shadowingUb - splitFactor) outer.shadowingUb - splitFactor - old.looplb
+          else outer.v * splitFactor
+
+        try {
+          // f.vars(inner.shadowingName) to get multiple??
+          clampedOuter + inner.v + old.looplb
+        } catch {
+          case sched: InvalidSchedule => clampedOuter + old.looplb
+        }
+      }
+
       override def v_=(new_val: Rep[Int]) = {
         throw new Exception("Error: should not be directly assigning to a split variable")
       }
@@ -106,6 +121,8 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
       def setOldLoopOffset(v: Rep[Int]) {
         old.loopub_=(v)
       }
+      // CHANGE override for now to map correctly (otherwise shadowing Name is null)
+      override val pseudoLoops: Map[(Func[_], String), Dim] = Map((f, shadowingName) -> this)
   }
 
   class FusedDim(min: Rep[Int], max: Rep[Int], name: String, f: Func[_],
@@ -123,8 +140,12 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
 
   class CompilerFunc[T:Typ:Numeric:SepiaNum](val f: (Rep[Int], Rep[Int]) => RGBVal[T],
                                              val dom: Domain, val id: Int) {
+
+    // CHANGE - dim(s: String)
     def x = vars("x")
     def y = vars("y")
+    def dim(s: String) = vars(s)
+
     var finalFunc: Boolean = false
 
     val domain = Map("x" -> dom._1, "y" -> dom._2)
@@ -141,12 +162,17 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
     override def toString(): String = id.toString
 
     def compute() = {
+      println(f"...x.v(${x.v}), y.v(${y.v})")
       f(x.v, y.v)
     }
 
-    def storeInBuffer(vs: RGBVal[T]) = buffer match {
-      case Some(b) => b(x.v - x.dimOffset, y.v - y.dimOffset) = vs
-      case None => throw new InvalidSchedule(f"No buffer allocated at storage time for ")
+    def storeInBuffer(vs: RGBVal[T]) = {
+      println(f"...Storing at: x.v(${x.v}) - x.dimOffset(${x.dimOffset})=${x.v - x.dimOffset}")
+      println(f"...Storing at: y.v(${y.v}) - y.dimOffset(${y.dimOffset})=${y.v - y.dimOffset}")
+      buffer match {
+        case Some(b) => b(x.v - x.dimOffset, y.v - y.dimOffset) = vs
+        case None => throw new InvalidSchedule(f"No buffer allocated at storage time for ")
+      }
     }
 
     def setOffsets(offsets: List[(String, Rep[Int])]) = {
@@ -166,7 +192,7 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
     }
 
     def allocateNewBuffer(m: Rep[Int], n: Rep[Int]) {
-      println(f"Buffer allocation: $id has type ${typ[T]}")
+      println(f"......Buffer allocation: Func $id has type ${typ[T]}")
       buffer = Some(NewBuffer[T](m, n))
     }
 
@@ -178,7 +204,6 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
       // We floor the bottom and ceil at the top to make sure
       // that we hit every value
       val oldDim = vars(v)
-      val x = oldDim.max - splitFactor
       val outerDim = new OuterDim(0, (oldDim.max - oldDim.min - splitFactor) / splitFactor,
           outer, this, oldDim.shadowingName, oldDim.scaleRatio * splitFactor, oldDim, splitFactor)
       vars(v) = new SplitDim(oldDim.min, oldDim.max,

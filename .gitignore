@@ -11,7 +11,9 @@ target/
 a.out
 callgrind.*
 *.a
+*.o
 test/bm
 test/halide_prog
 test/pipe
 .idea/
+.DS_Store

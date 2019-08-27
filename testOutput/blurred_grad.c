@@ -52,3 +52,7 @@ free(x55);
 }
 int32_t WIDTH_OUT_DIFF = 0;
 int32_t HEIGHT_OUT_DIFF = 0;
+int32_t WIDTH_OUT_MUL = 1;
+int32_t WIDTH_OUT_DIV = 1;
+int32_t HEIGHT_OUT_MUL = 1;
+int32_t HEIGHT_OUT_DIV = 1;
