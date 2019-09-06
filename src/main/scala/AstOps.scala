@@ -121,7 +121,7 @@ trait AstOps extends Ast {
 			case _ => false
 		}
 
-	private def deInline[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum]
+	protected def deInline[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum]
 											(producer: Func[T], consumer: Func[U], sched: Schedule) = {
 		def findParentOfCnFor(consumer: Func[U], sched: Schedule): Option[ScheduleNode] =
 			if (sched.getChildren.exists(isComputeNode(_, consumer))) Some(sched)
@@ -152,7 +152,6 @@ trait AstOps extends Ast {
 		}
 		else {
 			val l = sched.getChildren.map(isolateProducer(producer, _)).filter(_.isDefined)
-			println(l)
 			listToOption(l)
 		}
 
@@ -194,13 +193,13 @@ trait AstOps extends Ast {
 
 		val deInlinedSched = if (producer.inlined) {
 			producer.inlined = false
-			println(f"De-inlining ${producer.id}")
+			//println(f"De-inlining ${producer.id}")
 			val cn: ComputeNode[T] = ComputeNode(producer, List())
 			val xLoop: LoopNode[T] = LoopNode(producer.x, producer, Sequential(), List(cn))
 			val yLoop: LoopNode[T] = LoopNode(producer.y, producer, Sequential(), List(xLoop))
 			sched.withChildren(StorageNode(producer, yLoop::sched.getChildren))
 		} else {
-			println(f"Not de-inling ${producer.id}")
+			//println(f"Not de-inling ${producer.id}")
 			sched
 		}
 
@@ -227,11 +226,13 @@ trait AstOps extends Ast {
 		// CHANGE - computeAt
 		// producer.storeAt = Some(computeAtDim)
 		// If no computeAt, storeAt is useless ORDER! => not?
+		//println(f"storeAt before: ${producer.storeAt.getOrElse("non given")}")
 		producer.computeAt = Some(computeAtDim)
 		producer.storeAt = producer.storeAt match {
 			case Some(dim) => Some(dim)
 			case None => Some(computeAtDim)
 		}
+		//println(f"storeAt after: ${producer.storeAt.getOrElse("should not be printed")}")
 
 		val deInlinedSched = if (producer.inlined) {
 			producer.inlined = false

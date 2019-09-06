@@ -34,6 +34,7 @@ trait Ast {
 
 		def belongsTo[T](s: Stage[T]): Boolean
 
+		def copy(): ScheduleNode
 	}
 
 	case class LoopNode[T](variable: Dimension, stage: Stage[T],
@@ -61,7 +62,10 @@ trait Ast {
 
 			override def belongsTo[T](s: Stage[T]): Boolean = s == stage
 
-		}
+			override def copy(): ScheduleNode = {
+				this.mapChildren(_.map(_.copy))
+			}
+	}
 
 	case class ComputeNode[T](stage: Stage[T], children: List[ScheduleNode])
 	  extends ScheduleNode {
@@ -84,6 +88,10 @@ trait Ast {
 			}
 
 			override def belongsTo[T](s: Stage[T]): Boolean = s == stage
+
+			override def copy(): ScheduleNode = {
+				this.mapChildren(_.map(_.copy))
+			}
 	}
 
 	case class RootNode(children: List[ScheduleNode])
@@ -108,6 +116,10 @@ trait Ast {
 			}
 
 			override def belongsTo[T](s: Stage[T]): Boolean = false
+
+			override def copy(): ScheduleNode = {
+				this.mapChildren(_.map(_.copy))
+			}
 	}
 
 	case class StorageNode[T](stage: Stage[T], children: List[ScheduleNode])
@@ -132,5 +144,9 @@ trait Ast {
 			}
 
 			override def belongsTo[T](s: Stage[T]): Boolean = s == stage
+
+			override def copy(): ScheduleNode = {
+				this.mapChildren(_.map(_.copy))
+			}
 		}
 }

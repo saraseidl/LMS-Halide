@@ -172,6 +172,30 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 		}
 	}
 
+	def getEnclosingLoops(stage: Func[_], completeTree: ScheduleNode): Map[(Func[_], String), Dim] = {
+
+		// Collect all of the loop nodes on the path from Root to stage's compute node
+		def cnIsChild(node: ScheduleNode): Boolean = {
+			node.exists((n: ScheduleNode) => n match {
+				case ComputeNode(_, _) => n.belongsTo(stage)
+				case _ => false
+			})
+		}
+
+		def collectLoops(node: ScheduleNode): Map[(Func[_], String), Dim] = node match {
+			case LoopNode(v, stage, _, children) => {
+				if (cnIsChild(node)) red(children, collectLoops) + ((stage, v.name) -> v)
+				else Map()
+			}
+			case _ => red(node.getChildren, collectLoops)
+		}
+
+		completeTree match {
+			case RootNode(children) => red(children, collectLoops)
+			case _ => throw new InvalidSchedule("Non-Root schedule")
+		}
+	}
+
 	def notPreviouslyComputed(stage: Func[_],
 												    completeTree: ScheduleNode,
 											 	    boundsGraph: CallGraph,

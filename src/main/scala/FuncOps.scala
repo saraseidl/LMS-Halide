@@ -34,7 +34,7 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
 
     val shadowingName = name
 
-    println(f"$name has min values $min")
+    //println(f"$name has min values $min")
 
     private var offset: Option[Rep[Int]] = None
     private var loopLowerBound: Option[Rep[Int]] = None
@@ -77,6 +77,7 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
     val scaleRatio = 1
 
     val pseudoLoops: Map[(Func[_], String), Dim] = Map((f, shadowingName) -> this)
+
 	}
 
   class SplitDim(min: Rep[Int], max: Rep[Int], name: String, f: Func[_],
@@ -88,7 +89,6 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
           else outer.v * splitFactor
         //clampedOuter + inner.v
         clampedOuter + inner.v + old.looplb
-
       }
       // CHANGE HACKY not use always
       override def v: Rep[Int] = {
@@ -123,6 +123,10 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
       }
       // CHANGE override for now to map correctly (otherwise shadowing Name is null)
       override val pseudoLoops: Map[(Func[_], String), Dim] = Map((f, shadowingName) -> this)
+
+//      override def v_=(new_val: Rep[Int]) = {
+//        value = Some(new_val)
+//      }
   }
 
   class FusedDim(min: Rep[Int], max: Rep[Int], name: String, f: Func[_],
@@ -177,7 +181,6 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
 
     def setOffsets(offsets: List[(String, Rep[Int])]) = {
       offsets.foreach({case (v, off) => {
-        println(f"offset: $off")
         vars(v).dimOffset_=(off)
       }})
     }
@@ -218,6 +221,40 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
       val fuseMax = inner.max + (inner.max - inner.max) * outer.max
       val fusedVariable = new FusedDim(fusedMin, fuseMax, v, this, vars(inner), vars(outer), vars(inner).scope)
       vars(v) = fusedVariable
+    }
+
+    //NOTE: Old Dim and option dims not copied
+    def copy(): Func[T] = {
+      var cp = new CompilerFunc(f, dom, id)
+
+      vars.foreach({
+        case (name, d) if d.isInstanceOf[OuterDim] => {
+          var od: OuterDim = d.asInstanceOf[OuterDim]
+          cp.vars(name) = new OuterDim(od.min, od.max, od.name, this, od.shadowingName, od.scaleRatio, od.old, od.splitFactor, od.scope)
+        }
+        case (name, d) if !d.isInstanceOf[SplitDim] => {
+          cp.vars(name) = new Dim(d.min, d.max, d.name, this, d.scope)
+        }
+        case (name, d) => {}
+      })
+
+      vars.foreach({
+        case (name, d) if d.isInstanceOf[SplitDim] => {
+          var sd: SplitDim = d.asInstanceOf[SplitDim]
+          cp.vars(name) = new SplitDim(sd.min, sd.max, sd.name, this, cp.vars(sd.outer.name), cp.vars(sd.inner.name), sd.splitFactor, sd.old, sd.scope)
+        }
+        case (name, d) => {}
+      })
+
+      cp.inlined = inlined
+      cp.computeRoot = computeRoot
+      cp.storeRoot = storeRoot
+
+      cp.storeAt = storeAt
+      cp.computeAt = computeAt
+      cp.buffer = buffer
+
+      cp
     }
   }
 

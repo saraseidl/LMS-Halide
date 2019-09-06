@@ -47,6 +47,10 @@ trait Pipeline extends SimpleFuncOps {
 			split(y, yOuter, yInner, xSplit)
 			reorder(yInner, xOuter)
 		}
+		def autoschedule(funcs : FuncOps[_]*): Unit
+		def dummyAuto[U:Typ:Numeric:SepiaNum](func: Func[U])
+		//AUTO
+		//def autoschedule[U:Typ:Numeric:SepiaNum](producer: Func[U]): Unit
 
 		def addName(s: String): Unit
 	}
@@ -92,6 +96,8 @@ trait Pipeline extends SimpleFuncOps {
 		}
 	}
 	def func[T:Typ:Numeric:SepiaNum](f: (Rep[Int], Rep[Int]) => RGBVal[T]): Func[T]
+
+	def autoschedule[T1:Typ:Numeric:SepiaNum, T2:Typ:Numeric:SepiaNum](funcs: List[Func[_]]): Unit = return
 }
 
 trait PipelineForCompiler extends Pipeline
@@ -102,6 +108,7 @@ trait PipelineForCompiler extends Pipeline
 	private var schedule: Option[Schedule] = None
 	private var id = 0
 	var idToFunc: Map[Int, Func[_]] = Map()
+	var funcToId: Map[Func[_], Int] = Map()
 	val funcNames: MMap[Int, String] = MMap()
 	var w: Rep[Int]
 	var h: Rep[Int]
@@ -144,6 +151,7 @@ trait PipelineForCompiler extends Pipeline
 	override def toFunc[T:Typ:Numeric:SepiaNum](f: (Rep[Int], Rep[Int]) => RGBVal[T], dom: Domain): Func[T] = {
 		val func: Func[T] = mkFunc(f, dom, id)
 		idToFunc += id -> func
+		funcToId += func -> id
 		id += 1
 		schedule = Some(newSimpleSched(func))
 		func
@@ -213,6 +221,14 @@ trait PipelineForCompiler extends Pipeline
 			schedule = Some(vectorizeLoop(sched, f.vars(v + "_inner"), vectorWidth))
 		}
 
+		override def autoschedule(funcs: FuncOps[_]*): Unit = {
+			if (f.finalFunc) schedule = generateOptimalSchedule(f, funcs: _*)
+		}
+
+		override def dummyAuto[U:Typ:Numeric:SepiaNum](func: Func[U]): Unit = {
+			if (f.finalFunc) schedule = Some(generateOptSchedule(sched, f, func))
+		}
+
 		override def addName(v: String): Unit = {
 			funcNames(f.id) = v
 		}
@@ -229,4 +245,14 @@ trait PipelineForCompiler extends Pipeline
 	override implicit def toFuncOps[T:Typ:Numeric:SepiaNum](f: Func[T]): FuncOps[T] = new FuncOpsImp(f)
 
 	def sched(): Schedule = schedule.getOrElse(throw new Exception("No schedule tree generated"))
+
+	def generateOptimalSchedule[T:Typ:Numeric:SepiaNum](finalFunc: FuncOps[T], funcs: FuncOps[_]*): Schedule = {
+		sched
+	}
+
+	def generateOptSchedule[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](sched: Schedule, f: Func[T], f2: Func[U]): Schedule = {
+		println("Opt2")
+		sched
+	}
 }
+

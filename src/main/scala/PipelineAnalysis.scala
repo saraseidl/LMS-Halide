@@ -314,6 +314,10 @@ trait PipelineForAnalysis extends DslExp with SymbolicOpsExp
 		override def reorder(v1: String, v2: String): Unit = return
 		override def fuse(v: String, outer: String, inner: String): Unit = return
 		override def vectorize(v: String, vectorWidth: Int): Unit = return
+		override def autoschedule(funcs: FuncOps[_]*): Unit = return
+		override def dummyAuto[U:Typ:Numeric:SepiaNum](func: Func[U]): Unit = return
+		// AUTO
+		//override def autoschedule[U:Typ:Numeric:SepiaNum](producer: Func[U]): Unit = return
 		override def addName(s: String) = funcNames(funcsToId(f)) = s
 	}
 
