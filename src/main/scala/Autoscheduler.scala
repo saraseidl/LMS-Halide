@@ -18,7 +18,7 @@ trait Autoscheduler extends PipelineForCompiler
   }
 
   //TODO: move into callGraph
-  private def consumerOf[T:Typ:Numeric:SepiaNum](producer: Int): Int = {
+  private def consumerOf(producer: Int): Int = {
     idToFunc.filter({
       case (id, f) => callGraph.isProducerConsumer(producer, id)
     }).toList match {
@@ -58,9 +58,9 @@ trait Autoscheduler extends PipelineForCompiler
 
   //tiling options for consumer including no tiling and splits
   private def tilingOptionsFor[T:Typ:Numeric:SepiaNum](consumer: Func[T]): Array[(Int, Int)] = {
-    consumerOf[T](consumer.id) match {
+    consumerOf(consumer.id) match {
       case c if c != -1 => {
-        var cons: Func[T] = toFunc(c)
+        var cons: Func[_] = idToFunc(c)
         var sfx = cons.vars("x") match {
           case dim if dim.isInstanceOf[SplitDim] => dim.asInstanceOf[SplitDim].splitFactor
           case _ => 64
@@ -104,8 +104,6 @@ trait Autoscheduler extends PipelineForCompiler
   }
 
 
-
-
   override def generateOptSchedule[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](sched: Schedule, f: Func[T], f2: Func[U]): Schedule = {
 
     var stage: Int = f.id
@@ -134,14 +132,14 @@ trait Autoscheduler extends PipelineForCompiler
 
     while(nextStage(stage) != -1) {
 
+      stage = nextStage(stage)
+
       pendingSchedules = scheduleList
       scheduleList = Array[Schedule]()
 
       for (s <- pendingSchedules) {
-        scheduleList = scheduleList ++ generateNextOptionsFrom(s, toFunc[T](stage), toFunc[T](producerOf(stage)))
+        scheduleList = scheduleList ++ generateNextOptionsFor[T, U](s, stage)
       }
-
-      stage = nextStage(stage)
     }
 
     println(scheduleList(3).asInstanceOf[RootNode].children(0))
@@ -151,10 +149,14 @@ trait Autoscheduler extends PipelineForCompiler
   }
 
   // generate options for computing producer
-  def generateNextOptionsFrom[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](s: Schedule, consumer: Func[T], producer: Func[U]): Array[Schedule] = {
+  def generateNextOptionsFor[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](s: Schedule, stage: Int): Array[Schedule] = {
 
     var pendingSchedules: Array[Schedule] = Array()
     var numberOfOptionsCreated = 0;
+
+    var producer: Func[U] = toFunc[U](stage)
+    var scheduledConsumer: Option[Func[_]] = scheduledFunctionFor(consumerOf(stage), s)
+
 
     // compute and store granularity
     // + inline
@@ -169,13 +171,15 @@ trait Autoscheduler extends PipelineForCompiler
     //2) computeRoot
     println(f"compute at root $producer\n")
     var procop = producer.copy()
+    println(producer.inlined)
     pendingSchedules = pendingSchedules :+ computeAtRoot(swapFunction(s.copy(), procop), procop)
 
     //2) tile and realize somewhere
-    println(f"tile & realize $producer in $consumer\n")
-    if (!consumer.inlined)
-      pendingSchedules = pendingSchedules ++ tileAndRealize(s, consumer, producer)
-
+    println(f"tile & realize $producer\n")
+    pendingSchedules = scheduledConsumer match {
+      case Some(consumer) => pendingSchedules ++ tileAndRealize(s, consumer.asInstanceOf[Func[T]], producer)
+      case None => pendingSchedules
+    }
 
     for (s <- pendingSchedules) {
       println(s)
@@ -190,25 +194,27 @@ trait Autoscheduler extends PipelineForCompiler
     var scheduleList: Array[Schedule] = Array()
 
     tilingOptionsFor(cons).foreach({
-      case (sfx, sfy) => scheduleList = scheduleList ++ realizeInTiles(s, cons, prod, sfx, sfy)
+      case (sfx, sfy) => {
+        scheduleList = scheduleList ++ realizeInTiles(s, cons, prod, sfx, sfy)
+      }
     })
 
     scheduleList
   }
 
-  private def realizeInTiles[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](s: Schedule, cons: Func[T], prod: Func[U], sfx: Int, sfy: Int): Array[Schedule] = {
+  private def realizeInTiles[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](s: Schedule, consumer: Func[T], producer: Func[U], sfx: Int, sfy: Int): Array[Schedule] = {
 
     println(f"...tiling ($sfx, $sfy)")
 
     var scheduleList: Array[Schedule] = Array()
 
-    cons = cons.copy()
-
     // tile/split consumer
+    var cons = consumer.copy()
     s = autoTile(swapFunction(s.copy(), cons), cons, "x", "y", "xo", "yo", "xi", "yi", sfx, sfy)
 
     // deInlineProducer
-    s = deInlineProducer(prod, cons, s)
+    var prod = producer.copy()
+    s = deInlineProducer(prod, cons, swapFunction(s, prod))
 
     // realize and compute somewhere
     storeAtOptions(prod, s).foreach({
