@@ -103,8 +103,6 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 			val v = stage.storeAt
 							.getOrElse(throw new InvalidSchedule(f"Non-inlined function $stage has no storeAt"))
 
-			println(enclosingLoops)
-
 			// CHANGE - adjust storage bounds
 			// does not seem quite right with scaleRatio
 			println(f"......storing at $v dim")

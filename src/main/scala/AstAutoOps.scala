@@ -74,10 +74,10 @@ trait AstAutoOps extends AstOps with ScheduleCompiler {
   }
 
   def deInlineProducer[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](producer: Func[T], consumer: Func[U], sched: Schedule): Schedule = {
-
+    if (producer.inlined) {
       producer.inlined = false
       deInline(producer, consumer, sched)
-
+    } else sched
   }
 
 }

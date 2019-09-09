@@ -5,7 +5,6 @@ trait Autoscheduler extends PipelineForCompiler
                     with CompilerImageOps {
 
   val maxTiling: Int = 64
-
   //TODO: move into callGraph
   private def producerOf(consumer: Int): Int = {
     idToFunc.filter({
@@ -133,17 +132,16 @@ trait Autoscheduler extends PipelineForCompiler
     while(nextStage(stage) != -1) {
 
       stage = nextStage(stage)
+      println(f"\n\nIn stage(producer) $stage")
 
       pendingSchedules = scheduleList
       scheduleList = Array[Schedule]()
 
       for (s <- pendingSchedules) {
+        println(f"...processing schedule ${pendingSchedules.indexOf(s, 0)}")
         scheduleList = scheduleList ++ generateNextOptionsFor[T, U](s, stage)
       }
     }
-
-    println(scheduleList(3).asInstanceOf[RootNode].children(0))
-    println(f"\n Sched: ${scheduleList(3)}")
 
     scheduleList(3)
   }
@@ -163,27 +161,23 @@ trait Autoscheduler extends PipelineForCompiler
     // + compute Root
     // + realize and compute in loopnest
 
-    println(f"Schedule: $s")
     //1) inline
-    println(f"inline $producer\n")
+    println(f"......inline $producer")
     pendingSchedules = pendingSchedules :+ s.copy()
 
     //2) computeRoot
-    println(f"compute at root $producer\n")
+    println(f"......compute at root $producer")
     var procop = producer.copy()
-    println(producer.inlined)
     pendingSchedules = pendingSchedules :+ computeAtRoot(swapFunction(s.copy(), procop), procop)
 
     //2) tile and realize somewhere
-    println(f"tile & realize $producer\n")
+    println(f"......tile & realize $producer")
     pendingSchedules = scheduledConsumer match {
       case Some(consumer) => pendingSchedules ++ tileAndRealize(s, consumer.asInstanceOf[Func[T]], producer)
       case None => pendingSchedules
     }
 
-    for (s <- pendingSchedules) {
-      println(s)
-    }
+    println(f"\n...${pendingSchedules.length} schedules generated")
 
     pendingSchedules
   }
@@ -204,7 +198,7 @@ trait Autoscheduler extends PipelineForCompiler
 
   private def realizeInTiles[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](s: Schedule, consumer: Func[T], producer: Func[U], sfx: Int, sfy: Int): Array[Schedule] = {
 
-    println(f"...tiling ($sfx, $sfy)")
+    //println(f"...tiling ($sfx, $sfy)")
 
     var scheduleList: Array[Schedule] = Array()
 
@@ -222,20 +216,18 @@ trait Autoscheduler extends PipelineForCompiler
         sDimList.foreach({
           case sDim => {
             var prodcop = prod.copy()
-            var conscop = cons.copy()
+            var sfcp = sf.copy().asInstanceOf[Func[T]]
 
-            println(f"......store at function $sf, dim $sDim")
-            var tempSched = storefAtX(swapFunction(swapFunction(s.copy(), conscop), prodcop), prodcop, conscop, sDim)
+            var tempSched = storefAtX(swapFunction(swapFunction(s.copy(), sfcp), prodcop), prodcop, sfcp, sDim)
 
             computeAtOptions(prodcop, tempSched, sf, sDim).foreach({
               case (cf, cDimList) => {
                 cDimList.foreach({
                   case cDim => {
                     var prodcop2 = prodcop.copy()
-                    var conscop2 = conscop.copy()
+                    var cfcp = cf.copy().asInstanceOf[Func[T]]
 
-                    println(f".........compute at function $cf,  dim $cDim")
-                    scheduleList = scheduleList :+ computefAtX(swapFunction(swapFunction(tempSched.copy(), conscop2), prodcop2), prodcop2, conscop2, cDim)
+                    scheduleList = scheduleList :+ computefAtX(swapFunction(swapFunction(tempSched.copy(), cfcp), prodcop2), prodcop2, cfcp, cDim)
 
                   }
                 })
@@ -264,4 +256,6 @@ trait Autoscheduler extends PipelineForCompiler
     //    })
   }
 }
+
+
 
