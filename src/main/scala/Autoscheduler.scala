@@ -227,7 +227,8 @@ trait Autoscheduler extends PipelineForCompiler
                     var prodcop2 = prodcop.copy()
                     var cfcp = cf.copy().asInstanceOf[Func[T]]
 
-                    scheduleList = scheduleList :+ computefAtX(swapFunction(swapFunction(tempSched.copy(), cfcp), prodcop2), prodcop2, cfcp, cDim)
+                    var temp2 = computefAtX(swapFunction(swapFunction(tempSched.copy(), cfcp), prodcop2), prodcop2, cfcp, cDim)
+                    scheduleList = scheduleList :+ temp2
 
                   }
                 })

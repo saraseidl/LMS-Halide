@@ -121,6 +121,7 @@ trait AstOps extends Ast {
 			case _ => false
 		}
 
+	//CHANGELOG2.0 - deinline with or without storage node
 	protected def deInline[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum]
 											(producer: Func[T], consumer: Func[U], sched: Schedule) = {
 		def findParentOfCnFor(consumer: Func[U], sched: Schedule): Option[ScheduleNode] =
@@ -135,9 +136,13 @@ trait AstOps extends Ast {
 											Sequential(), List(cn))
 		val yLoop: LoopNode[T] = LoopNode(producer.y, producer,
 											Sequential(), List(xLoop))
-		sched.findAndTransform(parent, (n: Schedule) =>
-			n.withChildren(StorageNode(producer, yLoop::n.getChildren))
-		)
+
+		if (sched.exists(isStorageNodeFor(_, producer)))
+			sched.findAndTransform(parent, (n: Schedule) =>
+				n.withChildren(yLoop::n.getChildren))
+		else
+			sched.findAndTransform(parent, (n: Schedule) =>
+				n.withChildren(StorageNode(producer, yLoop::n.getChildren)))
 	}
 
 	def isolateProducer[T:Typ:Numeric:SepiaNum](producer: Func[T], sched: Schedule): Option[Schedule] = {
@@ -147,7 +152,7 @@ trait AstOps extends Ast {
 			else node.getChildren.filter(nodeFor(producer, _)).exists(goesToCn(_))
 		}
 
-		if(nodeFor(producer, sched) && goesToCn(sched)) {
+		if(nodeFor(producer, sched) && goesToCn(sched) && !isStorageNodeFor(sched, producer)) {
 			Some(sched)
 		}
 		else {
@@ -156,17 +161,25 @@ trait AstOps extends Ast {
 		}
 
 	}
-
+	//don't remove StorageNode
 	def removeProducerSchedule[T:Typ:Numeric:SepiaNum](deInlinedSched: N, producer: Func[T]): (Schedule, Schedule) = {
 		val producerSchedule: N = isolateProducer(producer, deInlinedSched).getOrElse(throw new InvalidSchedule(f"Couldn't find producer in tree $deInlinedSched for ${producer.id}"))
 
 		val notMovingChildren = producerSchedule.getChildren.filter(!_.belongsTo(producer))
+
 		val newProducerSchedule = producerSchedule.withChildren(
 			producerSchedule.getChildren.filter(_.belongsTo(producer)))
+
+		//CHANGELOG2.0 - keep children of th pa
 		val schedLessProducer = deInlinedSched.findAndTransform(
 			(n: N) => n.getChildren.exists(_ == producerSchedule),
-			(n: N) => n.withChildren(notMovingChildren)
+			(n: N) => n.withChildren(n.getChildren.filter(!_.belongsTo(producer)))
 		)
+
+//		val schedLessProducer = deInlinedSched.findAndTransform(
+//			(n: N) => n.getChildren.exists(_ == producerSchedule),
+//			(n: N) => n.withChildren(notMovingChildren)
+//		)
 
 		(schedLessProducer, newProducerSchedule)
 	}
@@ -175,6 +188,7 @@ trait AstOps extends Ast {
 													producer: Func[T],
 													newProducerSchedule: ScheduleNode,
 													newParent: ScheduleNode): Schedule = {
+		//Check: should never be storage node
 		if (isStorageNodeFor(newProducerSchedule, producer)) {
 			schedLessProducer.findAndTransform(newParent,
 				(n: Schedule) => newParent.withChildren(
@@ -183,8 +197,13 @@ trait AstOps extends Ast {
 					)
 				)
 			)
-		}
-		else addLeastSibling(newProducerSchedule, newParent, schedLessProducer)
+		} else if (newParent.getChildren.exists(isStorageNodeFor(_, producer))) {
+			println("Inserting producer into its storage node")
+			schedLessProducer.findAndTransform(newParent,
+				(n: Schedule) => newParent.mapChildren(c => if (isStorageNodeFor(c, producer)) addLeastSibling(newProducerSchedule, c, c)
+				else c)
+			)
+		} else addLeastSibling(newProducerSchedule, newParent, schedLessProducer)
 	}
 
 	def computeAtRoot[T:Typ:Numeric:SepiaNum](sched: Schedule, producer: Func[T]): Schedule = {
@@ -223,24 +242,22 @@ trait AstOps extends Ast {
 			case _ => throw new InvalidSchedule(f"Invalid computeAt var $s")
 		}
 
-		// CHANGE - computeAt
-		// producer.storeAt = Some(computeAtDim)
-		// If no computeAt, storeAt is useless ORDER! => not?
+		//CHANGE - computeAt
 		//println(f"storeAt before: ${producer.storeAt.getOrElse("non given")}")
 		producer.computeAt = Some(computeAtDim)
 		producer.storeAt = producer.storeAt match {
 			case Some(dim) => Some(dim)
 			case None => Some(computeAtDim)
 		}
-		//println(f"storeAt after: ${producer.storeAt.getOrElse("should not be printed")}")
 
+		//println(f"storeAt after: ${producer.storeAt.getOrElse("should not be printed")}")
+		//DANGER!!!! - for outoscheduling this schould never be inlined
 		val deInlinedSched = if (producer.inlined) {
 			producer.inlined = false
 			deInline(producer, consumer, sched)
 		} else sched
 
 		val (schedLessProducer, newProducerSchedule) = removeProducerSchedule(deInlinedSched, producer)
-
 		// Move the part of the tree for f to be a child of yLoop
 		val newParent = findLoopNodeFor(schedLessProducer, computeAtDim).getOrElse(throw new
 			InvalidSchedule("Couldn't find consumer"))
@@ -276,13 +293,19 @@ trait AstOps extends Ast {
 		}
 	}
 
+	//CHANGELOG2.0 - old parent can be new parent
 	def spliceInNewNode(nodeToInsert: ScheduleNode,
 											newParent: ScheduleNode,
 											oldParent: ScheduleNode,
 											sched: ScheduleNode) = {
-		sched.findAndTransform(newParent,
-			(n: ScheduleNode) => n.mapChildren(c => if (c == oldParent) nodeToInsert.withChildren(oldParent) else c)
-		)
+
+		sched.findAndTransform(newParent, (node: ScheduleNode) => {
+			node match {
+				// if oldParent == newParent, make storage node child of newParent (with children of old Parent)
+				case oldParent => newParent.withChildren(nodeToInsert.withChildren(oldParent.getChildren))
+				case n => n.mapChildren(c => if (c == oldParent) nodeToInsert.withChildren(oldParent) else c)
+			}
+		})
 	}
 
 	def storefAtX[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](sched: N,
@@ -298,16 +321,10 @@ trait AstOps extends Ast {
 			case _ => throw new InvalidSchedule(f"Invalid storeAt var $s")
 		}
 
-		// If no computeAt, storeAt is useless ORDER!
-		// do nothing if already stored at that dim (other case does not handle this) -> check again in this v
-		producer.storeAt match {
-			case Some(dim) if dim == storeAtDim => sched
-			case _ => {
-				producer.storeAt = Some(storeAtDim)
-				val newParent = findLoopNodeFor(sched, storeAtDim).getOrElse(throw new InvalidSchedule("Couldn't find consumer"))
-				storeAtNode(sched, producer, newParent)
-			}
-		}
+		// If no computeAt, storeAt is useless ORDER! - maybe change this
+		producer.storeAt = Some(storeAtDim)
+		val newParent = findLoopNodeFor(sched, storeAtDim).getOrElse(throw new InvalidSchedule("Couldn't find consumer"))
+		storeAtNode(sched, producer, newParent)
 	}
 
 	def storeAtRoot[T:Typ:Numeric:SepiaNum](sched: N, producer: Func[T]): N = {
@@ -332,7 +349,14 @@ trait AstOps extends Ast {
 
 		val storageNode: ScheduleNode = findStoreNode(sched, producer).getOrElse(StorageNode(producer, List()))
 		val oldChildren = newParent.getChildren
-		val oldParent = oldChildren.filter(_.exists(n => n == storageNode))(0)
+
+		//CHANGELOG2.0 - old parent can be new parent
+		val oldParent = if (oldChildren.filter(_ == storageNode).nonEmpty) newParent
+										else oldChildren.filter(_.exists(n => n == storageNode)) match {
+											case x::y => x
+											case Nil => newParent
+										}
+
 		spliceInNewNode(StorageNode[T](producer, List()),
 										cutOutNode(newParent, storageNode),
 										cutOutNode(oldParent, storageNode),
