@@ -407,3 +407,61 @@ trait TwoStageBlurInnerFused extends TestPipeline {
 		registerFunction("g", g)
 	}
 }
+
+
+trait BlurComputeAndStore extends TestPipeline {
+	override def prog(in: Input, w: Rep[Int], h: Rep[Int]): Rep[Unit] = {
+		val g = func[Short] {
+			(x: Rep[Int], y: Rep[Int]) => in(x, y) / 1.toShort
+		}
+
+		val f = final_func {
+			(x: Rep[Int], y: Rep[Int]) => g(x, y)
+		}
+
+		g.storeAt(f, "y")
+		g.computeAt(f, "x")
+
+		registerFunction("g", g)
+		registerFunction("f", f)
+	}
+}
+
+
+trait BlurComputeAndStore2 extends TestPipeline {
+	override def prog(in: Input, w: Rep[Int], h: Rep[Int]): Rep[Unit] = {
+		val g = func[Short] {
+			(x: Rep[Int], y: Rep[Int]) => in(x, y) / 1.toShort
+		}
+
+		val f = final_func {
+			(x: Rep[Int], y: Rep[Int]) => g(x, y)
+		}
+
+		g.computeAt(f, "x")
+		g.storeAt(f, "y")
+
+		registerFunction("g", g)
+		registerFunction("f", f)
+	}
+}
+
+trait BlurComputeAndStore3 extends TestPipeline {
+	override def prog(in: Input, w: Rep[Int], h: Rep[Int]): Rep[Unit] = {
+		val g = func[Short] {
+			(x: Rep[Int], y: Rep[Int]) => in(x, y) / 1.toShort
+		}
+
+		val f = final_func {
+			(x: Rep[Int], y: Rep[Int]) => g(x, y)
+		}
+
+		f.split("y", "y_outer", "y_inner", 2)
+
+		g.storeAt(f, "y_outer")
+		g.computeAt(f, "y_inner")
+
+		registerFunction("g", g)
+		registerFunction("f", f)
+	}
+}

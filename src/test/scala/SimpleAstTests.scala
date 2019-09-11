@@ -62,8 +62,8 @@ trait CompilerInstance extends ScheduleCompiler
 		w = width
 		h = height
 		compilerProg(in, out, w, h)
-		println(sched)
-		println()
+
+		println(f"Optimal Schedule: $sched\n")
 		evalSched(sched, boundsGraph, Map(), sched)
 		//println(sched)
 		assignOutArray(out)
@@ -610,5 +610,21 @@ class CompilerSpec extends FlatSpec {
 		blurProg6.compile(blurprog6A.getBoundsGraph, "bts")
 	}
 
+  "BlurComputeAndStore" should "store before computeAt" in {
+    val blurCS = new BlurComputeAndStore with CompilerInstance with TestAstOps
+    val blurCSA = new BlurComputeAndStore with TestPipelineAnalysis
+    blurCS.compile(blurCSA.getBoundsGraph, "bcs")
+  }
 
+  "BlurComputeAndStore2" should "computeAt before store" in {
+    val blurCS2 = new BlurComputeAndStore2 with CompilerInstance with TestAstOps
+    val blurCS2A = new BlurComputeAndStore2 with TestPipelineAnalysis
+    blurCS2.compile(blurCS2A.getBoundsGraph, "bcs2")
+  }
+
+  "BlurComputeAndStore" should "store before computeAt split dim" in {
+    val blurCS3 = new BlurComputeAndStore3 with CompilerInstance with TestAstOps
+    val blurCS3A = new BlurComputeAndStore3 with TestPipelineAnalysis
+    blurCS3.compile(blurCS3A.getBoundsGraph, "bc3s")
+  }
 }
