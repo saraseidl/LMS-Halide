@@ -13,15 +13,15 @@ trait AstAutoOps extends AstOps with ScheduleCompiler {
     sched match {
       case LoopNode(d, f, ltype, children)
         if f.id == func.id => {
-        LoopNode(func.vars(d.name), func, ltype, children.map(swapFunction(_, func)))
+          LoopNode(func.vars(d.name), func, ltype, children.map(swapFunction(_, func)))
       }
       case ComputeNode(f, children)
         if f.id == func.id => {
-        ComputeNode(func, children.map(swapFunction(_, func)))
+          ComputeNode(func, children.map(swapFunction(_, func)))
       }
       case StorageNode(f, children)
         if f.id == func.id => {
-        StorageNode(func, children.map(swapFunction(_, func)))
+          StorageNode(func, children.map(swapFunction(_, func)))
       }
       case RootNode(children) => {
         RootNode(children.map(swapFunction(_, func)))
@@ -31,20 +31,24 @@ trait AstAutoOps extends AstOps with ScheduleCompiler {
   }
 
   //find scheduledFunction for a given id
-  def scheduledFunctionFor(funcId: Int, sched: Schedule): Option[Func[_]] = {
+  def scheduledFunctionFor(funcId: Int, sched: Schedule, store: Boolean): Option[Func[_]] = {
     sched match {
       case RootNode(children) => {
-        children.map(scheduledFunctionFor(funcId, _)).headOption.getOrElse(None)
+        children.map(scheduledFunctionFor(funcId, _, store)).filter(_.isDefined).headOption.getOrElse(None)
+      }
+      case StorageNode(stage, children) if store => {
+        if (stage.id == funcId) Some(stage)
+        else children.map(scheduledFunctionFor(funcId, _, store)).filter(_.isDefined).headOption.getOrElse(None)
       }
       case StorageNode(stage, children) => {
-        children.map(scheduledFunctionFor(funcId, _)).headOption.getOrElse(None)
+        children.map(scheduledFunctionFor(funcId, _, store)).filter(_.isDefined).headOption.getOrElse(None)
       }
       case LoopNode(_, stage, _, children) => {
-        children.map(scheduledFunctionFor(funcId, _)).headOption.getOrElse(None)
+        children.map(scheduledFunctionFor(funcId, _, store)).filter(_.isDefined).headOption.getOrElse(None)
       }
       case ComputeNode(stage, children) =>
-      if (stage.id == funcId) Some(stage)
-      else children.map(scheduledFunctionFor(funcId, _)).headOption.getOrElse(None)
+        if (stage.id == funcId) Some(stage)
+        else children.map(scheduledFunctionFor(funcId, _, store)).filter(_.isDefined).headOption.getOrElse(None)
     }
   }
 

@@ -197,6 +197,7 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
     def allocateNewBuffer(m: Rep[Int], n: Rep[Int]) {
       println(f"......Buffer allocation: Func $id has type ${typ[T]}")
       buffer = Some(NewBuffer[T](m, n))
+      println(buffer)
     }
 
     def domWidth = x.max - x.min
@@ -230,10 +231,10 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
       vars.foreach({
         case (name, d) if d.isInstanceOf[OuterDim] => {
           var od: OuterDim = d.asInstanceOf[OuterDim]
-          cp.vars(name) = new OuterDim(od.min, od.max, od.name, this, od.shadowingName, od.scaleRatio, od.old, od.splitFactor, od.scope)
+          cp.vars(name) = new OuterDim(od.min, od.max, od.name, cp, od.shadowingName, od.scaleRatio, od.old, od.splitFactor, od.scope)
         }
         case (name, d) if !d.isInstanceOf[SplitDim] => {
-          cp.vars(name) = new Dim(d.min, d.max, d.name, this, d.scope)
+          cp.vars(name) = new Dim(d.min, d.max, d.name, cp, d.scope)
         }
         case (name, d) => {}
       })
@@ -241,7 +242,7 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
       vars.foreach({
         case (name, d) if d.isInstanceOf[SplitDim] => {
           var sd: SplitDim = d.asInstanceOf[SplitDim]
-          cp.vars(name) = new SplitDim(sd.min, sd.max, sd.name, this, cp.vars(sd.outer.name), cp.vars(sd.inner.name), sd.splitFactor, sd.old, sd.scope)
+          cp.vars(name) = new SplitDim(sd.min, sd.max, sd.name, cp, cp.vars(sd.outer.name), cp.vars(sd.inner.name), sd.splitFactor, sd.old, sd.scope)
         }
         case (name, d) => {}
       })

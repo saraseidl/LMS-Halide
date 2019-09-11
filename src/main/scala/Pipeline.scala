@@ -6,6 +6,8 @@ import scala.collection.mutable.{Map => MMap}
 trait Pipeline extends SimpleFuncOps {
 	// The trait the user mixes in to create their program
 	var finalFunc: Option[Func[UChar]] = None
+	var autoFinalFunc: Option[Func[UChar]] = None
+
 	type Input = Buffer[UChar]
 
 	def prog(in: Buffer[UChar], w: Rep[Int], h: Rep[Int]): Rep[Unit]
@@ -226,7 +228,11 @@ trait PipelineForCompiler extends Pipeline
 		}
 
 		override def dummyAuto[U:Typ:Numeric:SepiaNum](func: Func[U]): Unit = {
-			if (f.finalFunc) schedule = Some(generateOptSchedule(sched, f, func))
+			if (f.finalFunc) {
+				val (optSchedule, newFinalFunc) = generateOptSchedule(sched, f, func)
+				schedule = Some(optSchedule)
+				finalFunc = Some(newFinalFunc.asInstanceOf[Func[UChar]])
+			}
 		}
 
 		override def addName(v: String): Unit = {
@@ -250,9 +256,9 @@ trait PipelineForCompiler extends Pipeline
 		sched
 	}
 
-	def generateOptSchedule[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](sched: Schedule, f: Func[T], f2: Func[U]): Schedule = {
+	def generateOptSchedule[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](sched: Schedule, f: Func[T], f2: Func[U]): (Schedule, Func[T]) = {
 		println("Opt2")
-		sched
+		(sched, f)
 	}
 }
 

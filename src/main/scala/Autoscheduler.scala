@@ -5,6 +5,8 @@ trait Autoscheduler extends PipelineForCompiler
                     with CompilerImageOps {
 
   val maxTiling: Int = 64
+  val testmode = true
+
   //TODO: move into callGraph
   private def producerOf(consumer: Int): Int = {
     idToFunc.filter({
@@ -52,7 +54,7 @@ trait Autoscheduler extends PipelineForCompiler
       y <- 0 to log2(sfy)
     } tilings = tilings :+ (math.pow(2,x).toInt, math.pow(2,y).toInt)
 
-    tilings
+    if (testmode) Array(tilings(tilings.length/2)) else tilings
   }
 
   //tiling options for consumer including no tiling and splits
@@ -102,8 +104,17 @@ trait Autoscheduler extends PipelineForCompiler
     }
   }
 
+  def updateStoreAtDim(sched: Schedule, prod: Func[_], sf: Func[_]) = {
+    prod.storeAt = prod.storeAt match {
+      case Some(dim) => Some(sf.dim(dim.name))
+      case None => throw new InvalidSchedule("No store at defined for Producer")
+    }
 
-  override def generateOptSchedule[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](sched: Schedule, f: Func[T], f2: Func[U]): Schedule = {
+    swapFunction(sched.copy(), sf)
+  }
+
+
+  override def generateOptSchedule[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](sched: Schedule, f: Func[T], f2: Func[U]): (Schedule, Func[T]) = {
 
     var stage: Int = f.id
 
@@ -143,7 +154,27 @@ trait Autoscheduler extends PipelineForCompiler
       }
     }
 
-    scheduleList(3)
+
+
+    println(f"----------------------------------\n " +
+      f"${scheduleList.length} schedules generated\n\n" +
+      f"Pick your poison:")
+
+
+    val optimalSchedule = scheduleList(Console.readInt())
+
+
+    println(f"Poison: $optimalSchedule\n" +
+      f"----------------------------------\n")
+
+
+    val scheduledFinal = scheduledFunctionFor(f.id, optimalSchedule, true)
+      .getOrElse(throw new InvalidSchedule("We lost the final func along the way"))
+      .asInstanceOf[Func[T]]
+
+//    println(s"FunctionCheck: ${sameFuncs(optimalSchedule, scheduledFunctionFor(f.id, optimalSchedule, false).get)}")
+//    println(s"FunctionCheck: ${sameFuncs(optimalSchedule, scheduledFunctionFor(f2.id, optimalSchedule, false).get)}")
+    (optimalSchedule, scheduledFinal)
   }
 
   // generate options for computing producer
@@ -153,7 +184,7 @@ trait Autoscheduler extends PipelineForCompiler
     var numberOfOptionsCreated = 0;
 
     var producer: Func[U] = toFunc[U](stage)
-    var scheduledConsumer: Option[Func[_]] = scheduledFunctionFor(consumerOf(stage), s)
+    var scheduledConsumer: Option[Func[_]] = scheduledFunctionFor(consumerOf(stage), s, false)
 
 
     // compute and store granularity
@@ -177,19 +208,17 @@ trait Autoscheduler extends PipelineForCompiler
       case None => pendingSchedules
     }
 
-    println(f"\n...${pendingSchedules.length} schedules generated")
-
     pendingSchedules
   }
 
-  private def tileAndRealize[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](s: Schedule, cons: Func[T], prod: Func[U]) = {
-    assert(!cons.inlined)
+  private def tileAndRealize[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](s: Schedule, consumer: Func[T], producer: Func[U]) = {
+    assert(!consumer.inlined)
 
     var scheduleList: Array[Schedule] = Array()
 
-    tilingOptionsFor(cons).foreach({
+    tilingOptionsFor(consumer).foreach({
       case (sfx, sfy) => {
-        scheduleList = scheduleList ++ realizeInTiles(s, cons, prod, sfx, sfy)
+        scheduleList = scheduleList ++ realizeInTiles(s, consumer, producer, sfx, sfy)
       }
     })
 
@@ -198,7 +227,7 @@ trait Autoscheduler extends PipelineForCompiler
 
   private def realizeInTiles[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](s: Schedule, consumer: Func[T], producer: Func[U], sfx: Int, sfy: Int): Array[Schedule] = {
 
-    //println(f"...tiling ($sfx, $sfy)")
+    println(f"...tiling ($sfx, $sfy)")
 
     var scheduleList: Array[Schedule] = Array()
 
@@ -213,22 +242,36 @@ trait Autoscheduler extends PipelineForCompiler
     // realize and compute somewhere
     storeAtOptions(prod, s).foreach({
       case (sf, sDimList) => {
+        println("in")
         sDimList.foreach({
           case sDim => {
             var prodcop = prod.copy()
             var sfcp = sf.copy().asInstanceOf[Func[T]]
 
+            println(f"......store at function $sf, dim $sDim")
             var tempSched = storefAtX(swapFunction(swapFunction(s.copy(), sfcp), prodcop), prodcop, sfcp, sDim)
+            println(f"......s: producer occurs: ${functionOccursIn(tempSched, prod)}")
+            println(f"......storefunctions occurs: ${functionOccursIn(tempSched, sf)}")
 
-            computeAtOptions(prodcop, tempSched, sf, sDim).foreach({
+            computeAtOptions(prodcop, tempSched, sfcp, sDim).foreach({
               case (cf, cDimList) => {
                 cDimList.foreach({
                   case cDim => {
                     var prodcop2 = prodcop.copy()
+                    var sfcp2 = sfcp.copy()
                     var cfcp = cf.copy().asInstanceOf[Func[T]]
 
-                    var temp2 = computefAtX(swapFunction(swapFunction(tempSched.copy(), cfcp), prodcop2), prodcop2, cfcp, cDim)
-                    scheduleList = scheduleList :+ temp2
+                    var tempSched2 = updateStoreAtDim(tempSched, prodcop2, sfcp2)
+
+                    println(f".........compute at function $cf,  dim $cDim")
+                    tempSched2 = computefAtX(swapFunction(swapFunction(tempSched2.copy(), cfcp), prodcop2), prodcop2, cfcp, cDim)
+
+                    scheduleList = scheduleList :+ tempSched2
+                    println(f"......c: producer occurs: ${functionOccursIn(tempSched2, prod)}")
+                    println(f"......prodcop occurs: ${functionOccursIn(tempSched2, prodcop)}")
+                    println(f"......computefunction occurs: ${functionOccursIn(tempSched2, cf)}")
+                    println(f"......s: producer occurs: ${functionOccursIn(tempSched2, prod)}")
+                    println(f"......storefunctions occurs: ${functionOccursIn(tempSched2, sf)}")
 
                   }
                 })
@@ -239,24 +282,89 @@ trait Autoscheduler extends PipelineForCompiler
       }
     })
     scheduleList
+  }
 
-    //    generateRealizationOptions.foreach({
-    //      case (storeDim, computeDim) => {
-    //        var prodcop = prod.copy()
-    //        var conscop = cons.copy()
-    //
-    //        println(f"......realization ($storeDim, $computeDim)")
-    //
-    //        var sched = computefAtX(swapFunction(swapFunction(s.copy(), conscop), prodcop), prodcop, conscop, computeDim)
-    //        sched = storefAtX(sched, prodcop, conscop, storeDim)
-    //
-    //        scheduleList = scheduleList :+
-    //
-    //        sched
-    //      }
-    //    })
+
+  //sanity check for copying
+  def functionOccursIn(sched: Schedule, func: Func[_]): Boolean = {
+
+    def occursInNodeFunction(f: Func[_]): Boolean = {
+      if (f == func)  {
+        println("1")
+        true}
+      else if (f.vars.exists({ case (k,v) => occursInDimension(Some(v)) }))  {
+        println("2")
+        true}
+      else if (occursInDimension(f.storeAt))  {
+        println("3")
+        true}
+      else if (occursInDimension(f.computeAt))  {
+        println("4")
+        true}
+      else false
+    }
+
+    def occursInDimension(dim: Option[Dim]): Boolean = {
+      dim match {
+        case Some(dim) if dim.isInstanceOf[OuterDim] => {
+          var d = dim.asInstanceOf[OuterDim]
+          if (d.f == func) true
+          else if (d.old == func) true
+          else false
+        }
+        case Some(dim) if dim.isInstanceOf[SplitDim] => {
+          var d = dim.asInstanceOf[SplitDim]
+          if (d.f == func) true
+          else if (d.outer.f == func) true
+          else if (d.inner.f == func) true
+          else false
+        }
+        case Some(dim) =>  dim.f == func
+        case None => false
+      }
+    }
+
+    def containsFunc(node: Schedule, func: Func[_]): Boolean = {
+      node match {
+        case r@RootNode(otherChildren) => {
+          r.getChildren.exists(_.exists(containsFunc(_, func)))
+        }
+        case c@ComputeNode(s, otherChildren) => {
+          if (occursInNodeFunction(s)) true
+          else c.getChildren.exists(_.exists(containsFunc(_, func)))
+        }
+        case st@StorageNode(s, otherChildren) => {
+          if (occursInNodeFunction(s)) true
+          else st.getChildren.exists(_.exists(containsFunc(_, func)))
+        }
+        case l@LoopNode(v, s, loopType,  otherChildren) => {
+          if (occursInDimension(Some(v))) true
+          else if (occursInNodeFunction(s)) true
+          else l.getChildren.exists(_.exists(containsFunc(_, func)))
+        }
+      }
+    }
+
+    containsFunc(sched, func)
+  }
+
+  def sameFuncs(sched: Schedule, func: Func[_]): Boolean = {
+    sched match {
+      case r@RootNode(otherChildren) => {
+        !r.getChildren.exists(_.exists(!sameFuncs(_, func)))
+      }
+      case c@ComputeNode(s, otherChildren) => {
+        if (s != func && s.id == func.id) false
+        else !c.getChildren.exists(_.exists(!sameFuncs(_, func)))
+      }
+      case st@StorageNode(s, otherChildren) => {
+        if (s != func && s.id == func.id) false
+        else !st.getChildren.exists(_.exists(!sameFuncs(_, func)))
+      }
+      case l@LoopNode(v, s, loopType,  otherChildren) => {
+        if (s != func && s.id == func.id) false
+        else !l.getChildren.exists(_.exists(!sameFuncs(_, func)))
+      }
+    }
   }
 }
-
-
-
