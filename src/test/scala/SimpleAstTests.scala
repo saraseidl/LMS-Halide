@@ -562,54 +562,6 @@ class CompilerSpec extends FlatSpec {
 		cropProg.compile(cropProgAnalysis.getBoundsGraph, "cropper")
 	}
 
-	"TwoStageBoxBlurSplitAndComputeAtInner" should "split across y and compute/store at y_inner" in {
-		println("TwoStageBoxBlurSplitAndComputeAtInner")
-
-		val blurProg1 = new TwoStageBoxBlurSplitAndComputeAtInner with CompilerInstance with TestAstOps
-		val blurprog1A = new TwoStageBoxBlurSplitAndComputeAtInner with TestPipelineAnalysis
-		blurProg1.compile(blurprog1A.getBoundsGraph, "bsi")
-	}
-
-	"TwoStageBoxBlurSplitAndComputeAtOuter" should "split across y and compute/store at y_outer" in {
-		println("TwoStageBoxBlurSplitAndComputeAtOuter")
-
-		val blurProg2 = new TwoStageBoxBlurSplitAndComputeAtOuter with CompilerInstance with TestAstOps
-		val blurprog2A = new TwoStageBoxBlurSplitAndComputeAtOuter with TestPipelineAnalysis
-		blurProg2.compile(blurprog2A.getBoundsGraph, "bso")
-	}
-
-	"TwoStageBoxBlurSplitAndComputeAtAndStoreAt" should "split across y and compute at y_inner, store at y_outer" in {
-		println("TwoStageBoxBlurSplitAndComputeAtAndStoreAt")
-
-		val blurProg3 = new TwoStageBoxBlurSplitAndComputeAtAndStoreAt with CompilerInstance with TestAstOps
-		val blurprog3A = new TwoStageBoxBlurSplitAndComputeAtAndStoreAt with TestPipelineAnalysis
-		blurProg3.compile(blurprog3A.getBoundsGraph, "bss")
-	}
-
-	"TwoStageBoxBlurTileAndComputeAtOuter" should "tile and compute/store at y_outer" in {
-		println("TwoStageBoxBlurTileAndComputeAtOuter")
-
-		val blurProg4 = new TwoStageBoxBlurTileAndComputeAtOuter with CompilerInstance with TestAstOps
-		val blurprog4A = new TwoStageBoxBlurTileAndComputeAtOuter with TestPipelineAnalysis
-		blurProg4.compile(blurprog4A.getBoundsGraph, "bto")
-	}
-
-	"TwoStageBoxBlurTileAndComputeAtInner" should "tile and compute/store at y_inner" in {
-		println("TwoStageBoxBlurTileAndComputeAtInner")
-
-		val blurProg5 = new TwoStageBoxBlurTileAndComputeAtInner with CompilerInstance with TestAstOps
-		val blurprog5A = new TwoStageBoxBlurTileAndComputeAtInner with TestPipelineAnalysis
-		blurProg5.compile(blurprog5A.getBoundsGraph, "bti")
-	}
-
-	"TwoStageBoxBlurTileAndComputeAtAndStoreAt" should "tile and compute/store at y_inner" in {
-		println("TwoStageBoxBlurTileAndComputeAtAndStoreAt")
-
-		val blurProg6 = new TwoStageBoxBlurTileAndComputeAtAndStoreAt with CompilerInstance with TestAstOps
-		val blurprog6A = new TwoStageBoxBlurTileAndComputeAtAndStoreAt with TestPipelineAnalysis
-		blurProg6.compile(blurprog6A.getBoundsGraph, "bts")
-	}
-
   "BlurComputeAndStore" should "store before computeAt" in {
     val blurCS = new BlurComputeAndStore with CompilerInstance with TestAstOps
     val blurCSA = new BlurComputeAndStore with TestPipelineAnalysis
@@ -627,4 +579,18 @@ class CompilerSpec extends FlatSpec {
     val blurCS3A = new BlurComputeAndStore3 with TestPipelineAnalysis
     blurCS3.compile(blurCS3A.getBoundsGraph, "bc3s")
   }
+
+	"BrightenedGradAuto" should "brighten your day" in {
+		val b = new BrightenedGradAuto with CompilerInstance with Autoscheduler with TestAstOps
+		val ba = new BrightenedGradAuto with TestPipelineAnalysis
+		b.compile(ba.getBoundsGraph, "bright")
+	}
+//
+//	"BlurryBird" should "should make a blurry boi" in {
+//		println("BlurryBird")
+//
+//		val blur = new BlurryBird with CompilerInstance with Autoscheduler with TestAstOps
+//		val blurAnalysis = new BlurryBird with TestPipelineAnalysis
+//		blur.compile(blurAnalysis.getBoundsGraph, "blurryBoi")
+//	}
 }

@@ -190,6 +190,29 @@ trait BrightenedGradVectorized extends TestPipeline {
 	}
 }
 
+trait BrightenedGradAuto extends TestPipeline {
+	override def prog(in: Input, w: Rep[Int], h: Rep[Int]): Rep[Unit] = {
+		val f = func[Short] {
+			(x: Rep[Int], y: Rep[Int]) => in(x, y).map(repCharToRepShort(_)) // todo: better conversion
+		}
+		val g = func[Short] {
+			(x: Rep[Int], y: Rep[Int]) => f(x, y) + f(x, y) + f(x, y)
+		}
+		val i = final_func[Short] {
+			(x: Rep[Int], y: Rep[Int]) =>  (g(x, y) + g(x, y+1) + g(x, y-1) +
+				g(x-1, y-1) + g(x-1, y) + g(x-1, y+1) +
+				g(x+1, y-1) + g(x+1, y) + g(x+1, y+1)) / 54.toShort
+		}
+
+		i.dummyAuto(g)
+
+		registerFunction("f", f)
+		registerFunction("g", g)
+		registerFunction("i", i)
+
+	}
+}
+
 trait Cropper extends TestPipeline {
 	override def prog(in: Input, w: Rep[Int], h: Rep[Int]): Rep[Unit] = {
 		val f = final_func {
@@ -465,3 +488,29 @@ trait BlurComputeAndStore3 extends TestPipeline {
 		registerFunction("f", f)
 	}
 }
+
+//trait BlurryBird extends TestPipeline {
+//	override def prog(in: Input, w: Rep[Int], h: Rep[Int]): Rep[Unit] = {
+//		val h = func[Int] {
+//			(x: Rep[Int], y: Rep[Int]) => x + y
+//		}
+//		val g = func[Int] {
+//			(x: Rep[Int], y: Rep[Int]) => (h(x, y) + h(x+1, y) + h(x-1, y)) / 3.toInt
+//		}
+//		val i = final_func[Int] {
+//			(x: Rep[Int], y: Rep[Int]) => (g(x, y) + g(x, y+1) + g(x, y-1)) / 3.toInt
+//		}
+//
+//		i.tile("x", "y", "x_outer", "y_outer", "x_inner", "y_inner", 8, 8)
+//		i.split("y_inner", "y_inner1", "y_inner2", 4)
+//		g.computeAt(i, "y_inner1")
+//		g.storeAt(i, "y_outer")
+//		g.split("y", "y_outer", "y_inner", 2)
+//		h.computeAt(g, "y")
+//
+//
+//		registerFunction("g", g)
+//		registerFunction("h", h)
+//		registerFunction("i", i)
+//	}
+//}

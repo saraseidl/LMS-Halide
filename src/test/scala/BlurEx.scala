@@ -7,22 +7,26 @@ trait Blur extends TestPipeline {
       (x: Rep[Int], y: Rep[Int]) => in(x, y) / 1.toShort
     }
 
-    val h = func[Short] {
+    val f = final_func {
       (x: Rep[Int], y: Rep[Int]) => g(x, y)
     }
 
-    val f = final_func {
-      (x: Rep[Int], y: Rep[Int]) => h(x, y)
-    }
+        //f.split("y", "y_outer", "y_inner", 4)
 
-    //    //f.split("y", "y_outer", "y_inner", 4)
-    //
-    //    f.tile("x", "y", "x_outer", "y_outer", "x_inner", "y_inner", 4, 4)
-    //    g.computeAt(f, "y_inner")
-    //    g.split("y", "y_outer", "y_inner", 2)
+//        f.tile("x", "y", "x_outer", "y_outer", "x_inner", "y_inner", 4, 4)
+//        g.storeAt(f, "y_outer")
+//        g.computeAt(f, "x_outer")
+//        g.split("y", "y_outer", "y_inner", 2)
 
-    //    f.autoschedule(g, f)
+    // f.autoschedule(g, f)
+
     f.dummyAuto(g)
+
+    //g.computeRoot()
+    //g.storeAt(f, "y")
+//    g.storeAt(f, "x")
+//    g.computeAt(f, "x")
+    //g.storeAt(f, "y")
 
     registerFunction("g", g)
     registerFunction("f", f)
