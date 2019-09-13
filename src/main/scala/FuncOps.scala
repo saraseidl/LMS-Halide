@@ -81,7 +81,7 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
 	}
 
   class SplitDim(min: Rep[Int], max: Rep[Int], name: String, f: Func[_],
-                 val outer: Dim, val inner: Dim, val splitFactor: Int, val old: Dim, scope: String) extends Dim(min, max, name, f, scope) {
+                 var outer: Dim, var inner: Dim, val splitFactor: Int, val old: Dim, scope: String) extends Dim(min, max, name, f, scope) {
       // use this
       def vOld: Rep[Int] = {
         val clampedOuter: Rep[Int] =
@@ -161,6 +161,7 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
     var storeRoot = false
     var storeAt: Option[Dim] = None
     var computeAt: Option[Dim] = None
+    var vectorizeAt: Option[Dim] = None
     var buffer: Option[Buffer[T]] = None
 
     override def toString(): String = id.toString
@@ -197,7 +198,6 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
     def allocateNewBuffer(m: Rep[Int], n: Rep[Int]) {
       println(f"......Buffer allocation: Func $id has type ${typ[T]}")
       buffer = Some(NewBuffer[T](m, n))
-      println(buffer)
     }
 
     def domWidth = x.max - x.min
@@ -236,21 +236,26 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
         case (name, d) if !d.isInstanceOf[SplitDim] => {
           cp.vars(name) = new Dim(d.min, d.max, d.name, cp, d.scope)
         }
-        case (name, d) => {}
+        case (name, d) => {
+          var sd: SplitDim = d.asInstanceOf[SplitDim]
+          cp.vars(name) = new SplitDim(sd.min, sd.max, sd.name, cp, vars(sd.outer.name), vars(sd.inner.name), sd.splitFactor, sd.old, sd.scope)
+        }
       })
 
-      vars.foreach({
+      cp.vars.foreach({
         case (name, d) if d.isInstanceOf[SplitDim] => {
           var sd: SplitDim = d.asInstanceOf[SplitDim]
-          cp.vars(name) = new SplitDim(sd.min, sd.max, sd.name, cp, cp.vars(sd.outer.name), cp.vars(sd.inner.name), sd.splitFactor, sd.old, sd.scope)
+          sd.outer = cp.vars(sd.outer.name)
+          sd.inner = cp.vars(sd.inner.name)
         }
-        case (name, d) => {}
+        case _ => {}
       })
 
       cp.inlined = inlined
       cp.computeRoot = computeRoot
       cp.storeRoot = storeRoot
 
+      cp.vectorizeAt = vectorizeAt
       cp.storeAt = storeAt
       cp.computeAt = computeAt
       cp.buffer = buffer

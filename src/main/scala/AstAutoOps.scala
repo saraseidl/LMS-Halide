@@ -59,12 +59,27 @@ trait AstAutoOps extends AstOps with ScheduleCompiler {
     }).toMap
   }
 
+
+  def removeVectorizedDimension(func: Func[_], dims: List[String]) = {
+    func.vectorizeAt match {
+      case Some(vecDim) => {
+        println(f"...removing vectorized dimension ${vecDim} from list of options $dims")
+        dims.filter(_ != vecDim.name)
+      }
+      case None => dims
+    }
+  }
+
   //map of possible store at options (functions -> dimensions)
+  //last map removes vectorized dimensions from options
   def storeAtOptions[T:Typ:Numeric:SepiaNum](func: Func[T], sched: Schedule): Map[Func[_], List[String]] = {
-    getEnclosingFunctions(func, sched)
+    getEnclosingFunctions(func, sched).map({
+      case (k, v) => (k -> removeVectorizedDimension(k, v))
+    }).toMap
   }
 
   //map of possible compute at options (functions after SN for func -> dimensions)
+  //last map removes vectorized dimensions from options
   //TODO: less hacky way to get storeAt dim into this map
   def computeAtOptions[T:Typ:Numeric:SepiaNum](func: Func[T], sched: Schedule, sf: Func[_], sDim: String): Map[Func[_], List[String]] = {
     getLoopsAfterSN(func, sched) match {
@@ -72,6 +87,8 @@ trait AstAutoOps extends AstOps with ScheduleCompiler {
       case map => { map.keySet.groupBy(_._1).filter(_._1 != func).map({
           case (f, set) if (f.id == sf.id) => (f, set.map(_._2).toList :+ sDim)
           case (f, set) => (f, set.map(_._2).toList)
+        }).map({
+          case (k, v) => (k -> removeVectorizedDimension(k, v))
         }).toMap
       }
     }

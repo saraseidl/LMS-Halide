@@ -195,11 +195,15 @@ trait PipelineForCompiler extends Pipeline
 			schedule = Some(storeAtRoot(sched, f))
 		}
 
+		//scheduling works, just needs some prettyfying and decision on how to handle redefinitions (flag or var
+		//for implicit/explicit storeAt definitions
 		override def computeRoot(): Unit = {
 			//println(f.id)
 			//assert(f.inlined)
-			// BUG: The AST manipulation code is only working when f is inlined
-			if (f.inlined) schedule = Some(computeAtRoot(sched, f))
+			// BUG: The AST manipulation code is only working when f is inlined (not neccesarily)
+			f.computeAt = None
+			f.storeAt = None
+			schedule = Some(computeAtRoot(sched, f))
 		}
 
 		override def split(v: String, outer: String, inner: String, splitFactor: Int) = {

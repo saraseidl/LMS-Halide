@@ -31,6 +31,12 @@ class CallGraph(a: Map[Int, List[Int]], ws: Map[(Int, Int), Edge]) {
 
   def producersOf(f: Int) = adjList.getOrElse(f, List())
 
+  def consumersOf(f: Int) = {
+    adjList.foldLeft(List[Int]()) {
+      case (a, (k, v)) => if (v.contains(f)) a :+ k else a
+    }
+  }
+
   def getBoundWithDefault(producer: Int, consumer: Int,
                           v: String, default: Bound) = {
     weights((consumer, producer)).bounds.getOrElse(v, default)

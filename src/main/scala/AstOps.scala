@@ -236,6 +236,7 @@ trait AstOps extends Ast {
 		insertComputeAtNode(schedLessProducer, producer, newProducerSchedule, newParent)
 	}
 
+	//TODO: what about redefs
 	def computefAtX[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](sched: Schedule, producer: Func[T], consumer: Func[U], s: String): Schedule = {
 		// If f is inlined, create a new sched tree including storageNode for it.
 		// Else, cut out the current f tree (without storage node)
@@ -404,7 +405,10 @@ trait AstOps extends Ast {
 			case _ => false
 		},
 		_ match {
-			case LoopNode(d, stage, _, children) => LoopNode(d, stage, Vectorized(size), children)
+			case LoopNode(d, stage, _, children) => {
+				stage.vectorizeAt = Some(d)
+				LoopNode(d, stage, Vectorized(size), children)
+			}
 		})
 	}
 

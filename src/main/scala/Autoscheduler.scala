@@ -42,7 +42,8 @@ trait Autoscheduler extends PipelineForCompiler
   }
 
   //generate tiling options with powers of two
-  private def generateTilingOptions(sfx: Int, sfy: Int): Array[(Int, Int)] = {
+  //considering only multiples of vectorWidth if vectorized
+  private def generateTilingOptions(sfx: Int, sfy: Int, vectorWidth: Int): Array[(Int, Int)] = {
 
     def log2(num: Int): Int = {
       (math.log(num) / math.log(2)).floor.toInt
@@ -50,7 +51,7 @@ trait Autoscheduler extends PipelineForCompiler
 
     var tilings : Array[(Int,Int)] = Array()
     for {
-      x <- 0 to log2(sfx)
+      x <- log2(vectorWidth) to log2(sfx) by math.max(1, log2(vectorWidth))
       y <- 0 to log2(sfy)
     } tilings = tilings :+ (math.pow(2,x).toInt, math.pow(2,y).toInt)
 
@@ -58,7 +59,7 @@ trait Autoscheduler extends PipelineForCompiler
   }
 
   //tiling options for consumer including no tiling and splits
-  private def tilingOptionsFor[T:Typ:Numeric:SepiaNum](consumer: Func[T]): Array[(Int, Int)] = {
+  private def tilingOptionsFor[T:Typ:Numeric:SepiaNum](consumer: Func[T], vectorWidth: Int): Array[(Int, Int)] = {
     consumerOf(consumer.id) match {
       case c if c != -1 => {
         var cons: Func[_] = idToFunc(c)
@@ -70,27 +71,31 @@ trait Autoscheduler extends PipelineForCompiler
           case dim if dim.isInstanceOf[SplitDim] => dim.asInstanceOf[SplitDim].splitFactor
           case _ => 64
         }
-        generateTilingOptions(sfx, sfy)
+        generateTilingOptions(sfx, sfy, vectorWidth)
       }
-      case _ => generateTilingOptions(64, 64)
+      case _ => generateTilingOptions(64, 64, vectorWidth)
     }
   }
 
-  private def autoTile[T:Typ:Numeric:SepiaNum](sched: Schedule, consumer: Func[T], x: String, y: String,
+  private def tileAndVectorize[T:Typ:Numeric:SepiaNum](sched: Schedule, consumer: Func[T], x: String, y: String,
                xOuter: String, yOuter: String, xInner: String,
-               yInner: String, xSplit: Int, ySplit: Int): Schedule = {
+               yInner: String, xSplit: Int, ySplit: Int, vectorWidth: Int): Schedule = {
 
     (xSplit, ySplit) match {
       case (1, 1) => {
-        sched
+        autoVectorize(sched, consumer, x, vectorWidth);
       }
       case (xSplit, 1) => {
         consumer.split(x, xOuter, xInner, xSplit)
-        splitLoopNode(sched, consumer.vars(x), consumer.vars(xOuter), consumer.vars(xInner))
+        sched = splitLoopNode(sched, consumer.vars(x), consumer.vars(xOuter), consumer.vars(xInner))
+
+        autoVectorize(sched, consumer, xInner, vectorWidth);
       }
       case (1, ySplit) => {
         consumer.split(y, yOuter, yInner, ySplit)
-        splitLoopNode(sched, consumer.vars(y), consumer.vars(yOuter), consumer.vars(yInner))
+        sched = splitLoopNode(sched, consumer.vars(y), consumer.vars(yOuter), consumer.vars(yInner))
+
+        autoVectorize(sched, consumer, x, vectorWidth);
       }
       case (xSplit, ySplit) => {
         consumer.split(x, xOuter, xInner, xSplit)
@@ -99,9 +104,29 @@ trait Autoscheduler extends PipelineForCompiler
         consumer.split(y, yOuter, yInner, ySplit)
         sched = splitLoopNode(sched, consumer.vars(y), consumer.vars(yOuter), consumer.vars(yInner))
 
-        swapLoopNodes(sched, consumer.vars(yInner), consumer.vars(xOuter))
+        sched = swapLoopNodes(sched, consumer.vars(yInner), consumer.vars(xOuter))
+        autoVectorize(sched, consumer, xInner, vectorWidth);
       }
     }
+  }
+
+  private def autoVectorize[T:Typ:Numeric:SepiaNum](sched: Schedule, consumer: Func[T], x: String, vectorWidth: Int) = {
+    vectorWidth match {
+      case 1 => sched
+      case width => {
+        consumer.split(x, x + "_outer", x + "_inner", width)
+        sched = splitLoopNode(sched, consumer.vars(x), consumer.vars(x + "_outer"), consumer.vars(x + "_inner"))
+        vectorizeLoop(sched, consumer.vars(x + "_inner"), width)
+      }
+    }
+  }
+
+  private def vectorizationOptionsFor[T:Typ:Numeric:SepiaNum](consumer: Func[T]): List[Int] = {
+    val extent = consumer.vars("x") match {
+      case dim => dim.max - dim.min + 1
+    }
+
+    List(1, 4) //++ (4 to 16 by 4).filter(_ < extent)
   }
 
   def updateStoreAtDim(sched: Schedule, prod: Func[_], sf: Func[_]) = {
@@ -114,60 +139,57 @@ trait Autoscheduler extends PipelineForCompiler
   }
 
 
+  private def initPrint(sched: Schedule): Unit = {
+    println(f"----------------------------------\n " +
+      f"Autoschedule\n" +
+      f"...initial sched: $sched\n" +
+      f"----------------------------------\n")
+  }
+
+  private def pickFrom(scheduleList: Array[Schedule]): Schedule = {
+    println(f"----------------------------------\n " +
+      f"${scheduleList.length} schedules generated\n\n" +
+      f"Pick your poison:")
+
+    scheduleList(Console.readInt())
+  }
+
+
   override def generateOptSchedule[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](sched: Schedule, f: Func[T], f2: Func[U]): (Schedule, Func[T]) = {
+    initPrint(sched)
 
-    var stage: Int = f.id
-
-    var scheduleList: Array[Schedule] = Array()
+    //pendingSchedules  - list of schedules to be processed in stage
+    //scheduleList      - result of processing schedules in stage
     var pendingSchedules: Array[Schedule] = Array()
+    var scheduleList: Array[Schedule] = Array()
 
+    //stage currently processed(producer)
+    var stage: Int = f.id
     var numberOfDecisions = 0
 
-    //--------------------------------------------------------------------------------------------
-
-    println(f"----------------------------------\n " +
-            f"Autoschedule\n" +
-            f"...initial sched: $sched\n" +
-            f"----------------------------------\n")
-
-    sched match {
-      case RootNode(_) => sched
-      case _ => throw new InvalidSchedule("Root Node expected but not found")
-    }
 
     //-----------------------------------------------------------
     // GENERATE OPTIONS
     //-----------------------------------------------------------
-    scheduleList = scheduleList :+ sched.copy()
+
+    scheduleList = scheduleList :+ sched.copy
 
     while(nextStage(stage) != -1) {
 
-      stage = nextStage(stage)
       println(f"\n\nIn stage(producer) $stage")
+      stage = nextStage(stage)
 
       pendingSchedules = scheduleList
       scheduleList = Array[Schedule]()
 
       for (s <- pendingSchedules) {
         println(f"...processing schedule ${pendingSchedules.indexOf(s, 0)}")
-        scheduleList = scheduleList ++ generateNextOptionsFor[T, U](s, stage)
+        scheduleList = scheduleList ++ generateChildrenFor[T, U](s, stage)
       }
+
     }
 
-
-
-    println(f"----------------------------------\n " +
-      f"${scheduleList.length} schedules generated\n\n" +
-      f"Pick your poison:")
-
-
-    val optimalSchedule = scheduleList(Console.readInt())
-
-
-    println(f"Poison: $optimalSchedule\n" +
-      f"----------------------------------\n")
-
-
+    val optimalSchedule = pickFrom(scheduleList)
     val scheduledFinal = scheduledFunctionFor(f.id, optimalSchedule, true)
       .getOrElse(throw new InvalidSchedule("We lost the final func along the way"))
       .asInstanceOf[Func[T]]
@@ -178,12 +200,15 @@ trait Autoscheduler extends PipelineForCompiler
   }
 
   // generate options for computing producer
-  def generateNextOptionsFor[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](s: Schedule, stage: Int): Array[Schedule] = {
+  private def generateChildrenFor[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](s: Schedule, stage: Int): Array[Schedule] = {
 
-    var pendingSchedules: Array[Schedule] = Array()
-    var numberOfOptionsCreated = 0;
+    var scheduleList: Array[Schedule] = Array()
+    var numberOfChildrenCreated = 0;
 
+    //original func from CallGraph
     var producer: Func[U] = toFunc[U](stage)
+
+    //scheduled consumer for this specific schedule
     var scheduledConsumer: Option[Func[_]] = scheduledFunctionFor(consumerOf(stage), s, false)
 
 
@@ -194,21 +219,21 @@ trait Autoscheduler extends PipelineForCompiler
 
     //1) inline
     println(f"......inline $producer")
-    pendingSchedules = pendingSchedules :+ s.copy()
+    scheduleList = scheduleList :+ s.copy()
 
     //2) computeRoot
     println(f"......compute at root $producer")
     var procop = producer.copy()
-    pendingSchedules = pendingSchedules :+ computeAtRoot(swapFunction(s.copy(), procop), procop)
+    scheduleList = scheduleList :+ computeAtRoot(swapFunction(s.copy(), procop), procop)
 
     //2) tile and realize somewhere
     println(f"......tile & realize $producer")
-    pendingSchedules = scheduledConsumer match {
-      case Some(consumer) => pendingSchedules ++ tileAndRealize(s, consumer.asInstanceOf[Func[T]], producer)
-      case None => pendingSchedules
+    scheduleList = scheduledConsumer match {
+      case Some(consumer) => scheduleList ++ tileAndRealize(s, consumer.asInstanceOf[Func[T]], producer)
+      case None => scheduleList
     }
 
-    pendingSchedules
+    scheduleList
   }
 
   private def tileAndRealize[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](s: Schedule, consumer: Func[T], producer: Func[U]) = {
@@ -216,33 +241,39 @@ trait Autoscheduler extends PipelineForCompiler
 
     var scheduleList: Array[Schedule] = Array()
 
-    tilingOptionsFor(consumer).foreach({
-      case (sfx, sfy) => {
-        scheduleList = scheduleList ++ realizeInTiles(s, consumer, producer, sfx, sfy)
+    vectorizationOptionsFor(consumer).foreach({
+      case vectorWidth => {
+        tilingOptionsFor(consumer, vectorWidth).foreach({
+          case (sfx, sfy) => {
+            scheduleList = scheduleList ++ realizeInTiles(s, consumer, producer, sfx, sfy, vectorWidth)
+          }
+        })
       }
     })
 
     scheduleList
   }
 
-  private def realizeInTiles[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](s: Schedule, consumer: Func[T], producer: Func[U], sfx: Int, sfy: Int): Array[Schedule] = {
+  private def realizeInTiles[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](s: Schedule, consumer: Func[T], producer: Func[U],
+                                                                             sfx: Int, sfy: Int, vectorWidth: Int): Array[Schedule] = {
 
-    println(f"...tiling ($sfx, $sfy)")
+    println(f"...tiling ($sfx, $sfy) with vectorization $vectorWidth")
 
     var scheduleList: Array[Schedule] = Array()
 
     // tile/split consumer
     var cons = consumer.copy()
-    s = autoTile(swapFunction(s.copy(), cons), cons, "x", "y", "xo", "yo", "xi", "yi", sfx, sfy)
+    s = tileAndVectorize(swapFunction(s.copy(), cons), cons, "x", "y", "xo", "yo", "xi", "yi", sfx, sfy, vectorWidth)
 
+    println(s)
     // deInlineProducer
     var prod = producer.copy()
     s = deInlineProducer(prod, cons, swapFunction(s, prod))
 
-    // realize and compute somewhere
+    //realize and compute somewhere
+    println(storeAtOptions(prod, s))
     storeAtOptions(prod, s).foreach({
       case (sf, sDimList) => {
-        println("in")
         sDimList.foreach({
           case sDim => {
             var prodcop = prod.copy()
@@ -250,8 +281,6 @@ trait Autoscheduler extends PipelineForCompiler
 
             println(f"......store at function $sf, dim $sDim")
             var tempSched = storefAtX(swapFunction(swapFunction(s.copy(), sfcp), prodcop), prodcop, sfcp, sDim)
-            println(f"......s: producer occurs: ${functionOccursIn(tempSched, prod)}")
-            println(f"......storefunctions occurs: ${functionOccursIn(tempSched, sf)}")
 
             computeAtOptions(prodcop, tempSched, sfcp, sDim).foreach({
               case (cf, cDimList) => {
@@ -267,11 +296,13 @@ trait Autoscheduler extends PipelineForCompiler
                     tempSched2 = computefAtX(swapFunction(swapFunction(tempSched2.copy(), cfcp), prodcop2), prodcop2, cfcp, cDim)
 
                     scheduleList = scheduleList :+ tempSched2
-                    println(f"......c: producer occurs: ${functionOccursIn(tempSched2, prod)}")
-                    println(f"......prodcop occurs: ${functionOccursIn(tempSched2, prodcop)}")
-                    println(f"......computefunction occurs: ${functionOccursIn(tempSched2, cf)}")
-                    println(f"......s: producer occurs: ${functionOccursIn(tempSched2, prod)}")
-                    println(f"......storefunctions occurs: ${functionOccursIn(tempSched2, sf)}")
+
+//                    println(f"......storeSchedule - producer occurs: ${functionOccursIn(tempSched, prod)}")
+//                    println(f"......storeSchedule - storefunctions occurs: ${functionOccursIn(tempSched, sf)}")
+//                    println(f"......computeSchedule - producer occurs: ${functionOccursIn(tempSched2, prod)}")
+//                    println(f"......computeSchedule - prodcop occurs: ${functionOccursIn(tempSched2, prodcop)}")
+//                    println(f"......computeSchedule - computefunction occurs: ${functionOccursIn(tempSched2, cf)}")
+//                    println(f"......computeSchedule - storefunctions occurs: ${functionOccursIn(tempSched2, sf)}")
 
                   }
                 })
@@ -284,23 +315,18 @@ trait Autoscheduler extends PipelineForCompiler
     scheduleList
   }
 
-
   //sanity check for copying
   def functionOccursIn(sched: Schedule, func: Func[_]): Boolean = {
 
     def occursInNodeFunction(f: Func[_]): Boolean = {
-      if (f == func)  {
-        println("1")
-        true}
-      else if (f.vars.exists({ case (k,v) => occursInDimension(Some(v)) }))  {
-        println("2")
-        true}
-      else if (occursInDimension(f.storeAt))  {
-        println("3")
-        true}
-      else if (occursInDimension(f.computeAt))  {
-        println("4")
-        true}
+      if (f == func)
+        true
+      else if (f.vars.exists({ case (k,v) => occursInDimension(Some(v)) }))
+        true
+      else if (occursInDimension(f.storeAt))
+        true
+      else if (occursInDimension(f.computeAt))
+        true
       else false
     }
 
@@ -344,7 +370,6 @@ trait Autoscheduler extends PipelineForCompiler
         }
       }
     }
-
     containsFunc(sched, func)
   }
 
