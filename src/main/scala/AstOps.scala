@@ -207,7 +207,7 @@ trait AstOps extends Ast {
 			)
 		//Case: storeAt
 		} else if (newParent.getChildren.exists(isStorageNodeFor(_, producer))) {
-			println("Inserting producer into its storage node")
+			//println("Inserting producer into its storage node")
 			schedLessProducer.findAndTransform(newParent,
 				(n: Schedule) => newParent.mapChildren(c => if (isStorageNodeFor(c, producer)) addLeastSibling(newProducerSchedule, c, c)
 				else c)

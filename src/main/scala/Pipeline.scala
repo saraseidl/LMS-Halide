@@ -50,7 +50,7 @@ trait Pipeline extends SimpleFuncOps {
 			reorder(yInner, xOuter)
 		}
 		def autoschedule(funcs : FuncOps[_]*): Unit
-		def dummyAuto[U:Typ:Numeric:SepiaNum](func: Func[U])
+		def dummyAuto[U:Typ:Numeric:SepiaNum](expX: Int, expY: Int, cost: String)
 		//AUTO
 		//def autoschedule[U:Typ:Numeric:SepiaNum](producer: Func[U]): Unit
 
@@ -231,9 +231,9 @@ trait PipelineForCompiler extends Pipeline
 			if (f.finalFunc) schedule = generateOptimalSchedule(f, funcs: _*)
 		}
 
-		override def dummyAuto[U:Typ:Numeric:SepiaNum](func: Func[U]): Unit = {
+		override def dummyAuto[U:Typ:Numeric:SepiaNum](expX: Int, expY: Int, cost: String): Unit = {
 			if (f.finalFunc) {
-				val (optSchedule, newFinalFunc) = generateOptSchedule(sched, f, func)
+				val (optSchedule, newFinalFunc) = generateOptSchedule[T, U](sched, f, expX, expY, cost)
 				schedule = Some(optSchedule)
 				finalFunc = Some(newFinalFunc.asInstanceOf[Func[UChar]])
 			}
@@ -260,9 +260,8 @@ trait PipelineForCompiler extends Pipeline
 		sched
 	}
 
-	def generateOptSchedule[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](sched: Schedule, f: Func[T], f2: Func[U]): (Schedule, Func[T]) = {
-		println("Opt2")
-		(sched, f)
+	def generateOptSchedule[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](sched: Schedule, f: Func[T], expX: Int, expY: Int, cost: String): (Schedule, Func[T]) = {
+		throw new InvalidAlgorithm("no Autoscheduler mixed in ")
 	}
 }
 

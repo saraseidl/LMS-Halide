@@ -4,9 +4,18 @@ package sepia
 
 class Edge(val bounds: Map[String, Bound])
 
-class CallGraph(a: Map[Int, List[Int]], ws: Map[(Int, Int), Edge]) {
+class CallGraph(a: Map[Int, List[Int]], ws: Map[(Int, Int), Edge], c: Map[Int, Int]) {
   private val adjList: Map[Int, List[Int]] = a
   private val weights: Map[(Int, Int), Edge] = ws
+  private val costs: Map[Int, Int] = c
+
+  def getCost(func: Int) = {
+    costs(func)
+  }
+
+  def getCosts() = {
+    costs
+  }
 
   def getBound(producer: Int, consumer: Int, v: String) = {
     weights((consumer, producer)).bounds(v)
@@ -70,11 +79,10 @@ object CallGraph {
     }
   }
 
-  def graphFromMap(m: Map[Int, Map[Int, Map[String, Bound]]], node: Int): CallGraph = {
+  def graphFromMap(m: Map[Int, Map[Int, Map[String, Bound]]], node: Int, c: Map[Int, Int]): CallGraph = {
     val weights = buildWeights(m)
     val adjList = buildAdj(m, node)
-    new CallGraph(adjList, weights)
+    new CallGraph(adjList, weights, c)
   }
-
 
 }

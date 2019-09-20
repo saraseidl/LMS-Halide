@@ -9,7 +9,7 @@ trait TestPipelineAnalysis extends PipelineForAnalysis with TestPipeline {
       if (id == -1) "in"
       else asString(tidToFunc(id))
     }
-    val bounds = getInputBounds()
+    val bounds = getInputBounds()._1
 
     bounds.map{case (k, v) => convert(k) ->
          v.map{case (k1, v2) => convert(k1) -> v2}}

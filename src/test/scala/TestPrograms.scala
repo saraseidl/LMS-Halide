@@ -204,7 +204,7 @@ trait BrightenedGradAuto extends TestPipeline {
 				g(x+1, y-1) + g(x+1, y) + g(x+1, y+1)) / 54.toShort
 		}
 
-		i.dummyAuto(g)
+		i.dummyAuto[Short](64, 64, "cCost")
 
 		registerFunction("f", f)
 		registerFunction("g", g)

@@ -194,6 +194,7 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 		}
 	}
 
+  //TODO: not just 'x' and 'y'!
 	def notPreviouslyComputed(stage: Func[_],
 												    completeTree: ScheduleNode,
 											 	    boundsGraph: CallGraph,
@@ -218,7 +219,8 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 					 // Generate list for each variable
 					 // v < v.min + overlapSize || v == upperLoopBound
 					 def p(name: String) = {
-						 val v = stage.vars(name)
+						 val baseName = if (name contains "x") "x" else "y"
+						 val v = stage.vars(baseName)
 						 val w = relevantBounds(name).width - 1
 						 val (_, ub): (Rep[Int], Rep[Int]) = computeLoopBounds(v, v.f, boundsGraph, enclosingLoops)
 						 v.v < v.min + w || v.v == ub - 1
@@ -342,11 +344,11 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
     case ComputeNode(stage, children) => {
 			println()
 			println("evalCompute:")
-			//if (notPreviouslyComputed(stage, completeTree, boundsGraph, enclosingLoops)) {
+			if (notPreviouslyComputed(stage, completeTree, boundsGraph, enclosingLoops)) {
 				println("Computing")
 				val v = stage.compute()
 	      stage.storeInBuffer(v)
-			//}
+			}
       for (child <- children) evalSched(child, boundsGraph, enclosingLoops, completeTree)
     }
 

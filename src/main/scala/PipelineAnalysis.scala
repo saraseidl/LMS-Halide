@@ -25,6 +25,8 @@ trait PipelineForAnalysis extends DslExp with SymbolicOpsExp
 
 	def treeTraversal[T](f: List[T] => T, m: Exp[_] => T,
                        node: Def[_]): T = node match {
+			case FuncApplication(_, x, y) 		=> f(List(x, y).map(m))
+			case SymbolicArrayApplication(_, x, y) => f(List(x, y).map(m))
       case ObjDoubleParseDouble(x)      => f(List(x).map(m))
       case ObjDoublePositiveInfinity()  => f(List().map(m))
       case ObjDoubleNegativeInfinity()  => f(List().map(m))
@@ -190,7 +192,6 @@ trait PipelineForAnalysis extends DslExp with SymbolicOpsExp
 			}
 
 
-
 			case SymbolicInt(dim) => Bound(0, 0, 1, 1, 1, 1)
 			case _ => throw new InvalidAlgorithm(f"Error: Invalid input to function, $v")
 		}
@@ -235,7 +236,103 @@ trait PipelineForAnalysis extends DslExp with SymbolicOpsExp
     case Const(_) => Map()
   }
 
-	def getInputBounds(): Map[Int, Map[Int, Map[String, Bound]]] = {
+	def getFunctionCost(v: RGBVal[_]): Int = {
+		getFunctionCost(v.red) + getFunctionCost(v.blue) + getFunctionCost(v.green)
+	}
+
+	def getFunctionCost(e: Exp[_]): Int = e match {
+		case Def(v) => v match {
+			case x => {
+				var opCost = x match {
+					case FuncApplication(_, x, y) 		=> 0
+					case SymbolicArrayApplication(_, x, y) => 1
+					case ObjDoubleParseDouble(x)      => 0
+					case ObjDoublePositiveInfinity()  => 0
+					case ObjDoubleNegativeInfinity()  => 0
+					case ObjDoubleMinValue()          => 0
+					case ObjDoubleMaxValue()          => 0
+					case DoubleFloatValue(x)          => 0
+					case DoubleToInt(x)               => 0
+					case DoubleToFloat(x)             => 0
+					case DoublePlus(x,y)              => 1
+					case DoubleMinus(x,y)             => 1
+					case DoubleTimes(x,y)             => 2
+					case DoubleDivide(x,y)            => 2
+					case ObjFloatParseFloat(x)        => 1
+					case FloatToInt(x)                => 0
+					case FloatToDouble(x)             => 0
+					case FloatPlus(x,y)               => 1
+					case FloatMinus(x,y)              => 1
+					case FloatTimes(x,y)              => 3
+					case FloatDivide(x,y)             => 4
+					case ObjIntegerParseInt(x)        => 1
+					case ObjIntMaxValue()             => 1
+					case ObjIntMinValue()             => 1
+					case IntDoubleValue(x)            => 1
+					case IntFloatValue(x)             => 1
+					case IntBitwiseNot(x)             => 1
+					case IntPlus(x,y)                 => 1
+					case IntMinus(x,y)                => 1
+					case IntTimes(x,y)                => 2
+					case IntDivide(x,y)               => 2
+					case IntMod(x,y)                  => 2
+					case IntBinaryOr(x,y)             => 1
+					case IntBinaryAnd(x,y)            => 1
+					case IntBinaryXor(x,y)            => 1
+					case IntToLong(x)                 => 0
+					case IntToFloat(x)                => 0
+					case IntToDouble(x)               => 0
+					case IntShiftLeft(x,y)            => 1
+					case IntShiftRightLogical(x,y)    => 1
+					case IntShiftRightArith(x,y)      => 1
+					case ObjLongParseLong(x)          => 0
+					case LongMod(x,y)                 => 2
+					case LongShiftLeft(x,y)           => 1
+					case LongBinaryOr(x,y)            => 1
+					case LongBinaryAnd(x,y)           => 1
+					case LongToInt(x)                 => 0
+					case LongShiftRightUnsigned(x,y)  => 1
+					case SymbolicInt(_) 							=> 0
+					case ShortPlus(a, b)							=> 1
+					case ShortDivide(a, b)						=> 2
+					case ShortMinus(a, b)							=> 1
+					case ShortTimes(a, b)							=> 2
+					case ShortConvert(a)				  		=> 0
+					case ShortToInt(a)				  	  	=> 0
+					case NumericDivide(a, b)					=> 2
+					case NumericPlus(a, b)					  => 1
+					case NumericTimes(a, b)           => 2
+					case NumericMinus(a, b)						=> 1
+					case IntToDoubleConversion(a)			=> 0
+					case ShortToDouble(a)             => 0
+					case ShortToFloat(a)              => 0
+					case DoubleToShortConversion(a)   => 0
+					case CharToT(a)						        => 0
+					case TToChar(a)                   => 0
+					//case IfThenElse(c, a, b)        => 1
+					case MathSqrt(a)                  => 2
+					case OrderingLT(a, b)             => 1
+					case OrderingGT(a, b)             => 1
+					case OrderingLTEQ(a, b)           => 1
+					case OrderingGTEQ(a, b)           => 1
+					case BooleanAnd(a, b)             => 1
+					case BooleanOr(a, b)              => 1
+					case Equal(a, b)                  => 1
+					case NotEqual(a, b)               => 1
+					case Tern(cond, l, u)             => 0
+					case ArrayApply(c, i)             => 1
+					case ArrayFromSeq(seq)            => 0
+					case _                            => 0
+				}
+				treeTraversal[Int](
+					_.foldLeft(opCost)(_ + _),
+					getFunctionCost _, x)
+			}
+		}
+		case Const(_) => 1
+	}
+
+	def getInputBounds(): (Map[Int, Map[Int, Map[String, Bound]]], Map[Int, Int]) = {
 		// f -> (g1 -> (a, b), g2 -> (c, d) ...) means that
 		// f calls functions g1, g2 with (a, b) a bound on
 		// g1's input and (c, d) a bound on g2's input.
@@ -245,6 +342,10 @@ trait PipelineForAnalysis extends DslExp with SymbolicOpsExp
 			(id -> getInputTransformations(
 														 f(newSymbolicInt("x"), newSymbolicInt("y"))))
 	  }})
+		val c = funcsToId.map( { case (f, id) => {
+			(id -> getFunctionCost(
+														f(newSymbolicInt("x"), newSymbolicInt("y"))))
+		}}) + (-1 -> 1)
 	/* println(f"res: ${res(79)}")
 	 val k = res(79).keys.toList(0)
 	 assert(closed(res))
@@ -260,7 +361,8 @@ trait PipelineForAnalysis extends DslExp with SymbolicOpsExp
 	 }
 	 val nReachable = reachableFromLast.size
 	 println(f"Number of expected apps: $nReachable")
-	 res
+
+		(res,c)
 
 	}
 
@@ -287,9 +389,10 @@ trait PipelineForAnalysis extends DslExp with SymbolicOpsExp
 	}
 
 	def getBoundsGraph(): CallGraph = {
-	    val m = getInputBounds
+	    val (m, c) = getInputBounds
+			//val c = getFunctionCosts
 			CallGraph.graphFromMap(m,
-				funcsToId(finalFunc.getOrElse(throw new InvalidAlgorithm("Error: No final func"))))
+				funcsToId(finalFunc.getOrElse(throw new InvalidAlgorithm("Error: No final func"))), c)
 	}
 
 	def hasCycles(m: Map[Int, Map[Int, Map[String, Bound]]]): Boolean = {
@@ -315,7 +418,7 @@ trait PipelineForAnalysis extends DslExp with SymbolicOpsExp
 		override def fuse(v: String, outer: String, inner: String): Unit = return
 		override def vectorize(v: String, vectorWidth: Int): Unit = return
 		override def autoschedule(funcs: FuncOps[_]*): Unit = return
-		override def dummyAuto[U:Typ:Numeric:SepiaNum](func: Func[U]): Unit = return
+		override def dummyAuto[U:Typ:Numeric:SepiaNum](expX: Int, expY: Int, cost: String): Unit = return
 		// AUTO
 		//override def autoschedule[U:Typ:Numeric:SepiaNum](producer: Func[U]): Unit = return
 		override def addName(s: String) = funcNames(funcsToId(f)) = s

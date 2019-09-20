@@ -581,7 +581,7 @@ class CompilerSpec extends FlatSpec {
   }
 
 	"BrightenedGradAuto" should "brighten your day" in {
-		val b = new BrightenedGradAuto with CompilerInstance with Autoscheduler with TestAstOps
+		val b = new BrightenedGradAuto with CompilerInstance with AutoSchedulerR with TestAstOps
 		val ba = new BrightenedGradAuto with TestPipelineAnalysis
 		b.compile(ba.getBoundsGraph, "bright")
 	}
