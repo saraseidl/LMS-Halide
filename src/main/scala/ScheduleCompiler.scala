@@ -187,7 +187,7 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 
 						f.vars.map({case (k, v) => {
 							val bound = BoundsAnalysis
-									 .boundsForProdInCon(boundsGraph, -1, f.id, k)
+									 .boundsForProdInCon(boundsGraph, -1, f.id, v.shadowingName)
 									 .getOrElse(Bound(0, 0, 1, 1, 1, 1))
 							println(f"bound for offset: $bound")
 							(k, v.min)}}).toList

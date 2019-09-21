@@ -174,11 +174,11 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
     def domHeight = y.max - y.min
 
     def split(v: String, outer: String, inner: String, splitFactor: Int) = {
-      val innerDim = new Dim(0, splitFactor, inner, this)
+      val oldDim = vars(v)
+      // innermost dimension has original name ("x" or "y")
+      val innerDim = new Dim(0, splitFactor, oldDim.shadowingName, this)
       // We floor the bottom and ceil at the top to make sure
       // that we hit every value
-      val oldDim = vars(v)
-      val x = oldDim.max - splitFactor
       val outerDim = new OuterDim(0, (oldDim.max - oldDim.min - splitFactor) / splitFactor,
           outer, this, oldDim.shadowingName, oldDim.scaleRatio * splitFactor, oldDim, splitFactor)
       vars(v) = new SplitDim(oldDim.min, oldDim.max,
