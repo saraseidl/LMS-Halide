@@ -39,8 +39,8 @@ class FastTwoStageBlur extends FlatSpec {
           TLoopNode("y", "g", Sequential(), List(
             TLoopNode("y_outer", "f", Sequential(), List(
               TLoopNode("x_outer", "f", Sequential(), List(
-                TLoopNode("y_inner", "f", Sequential(), List(
-                  TLoopNode("x_inner", "f", Sequential(), List(
+                TLoopNode("y", "f", Sequential(), List(
+                  TLoopNode("x", "f", Sequential(), List(
                       TComputeNode("f", List())
                   ))
                 ))

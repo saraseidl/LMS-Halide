@@ -106,6 +106,8 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
       def setOldLoopOffset(v: Rep[Int]) {
         old.loopub_=(v)
       }
+
+      override val pseudoLoops: Map[(Func[_], String), Dim] = Map((f, shadowingName) -> this)
   }
 
   class FusedDim(min: Rep[Int], max: Rep[Int], name: String, f: Func[_],
@@ -189,9 +191,10 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
     }
 
     def fuse(v: String, outer: String, inner: String) = {
+      val oldOuter = vars(outer)
       val fusedMin = inner.min + (inner.max - inner.min) * outer.min
-      val fuseMax = inner.max + (inner.max - inner.max) * outer.max
-      val fusedVariable = new FusedDim(fusedMin, fuseMax, v, this, vars(inner), vars(outer))
+      val fuseMax = inner.max + (inner.max - inner.min) * outer.max
+      val fusedVariable = new FusedDim(fusedMin, fuseMax, oldOuter.shadowingName, this, vars(inner), vars(outer))
       vars(v) = fusedVariable
     }
   }

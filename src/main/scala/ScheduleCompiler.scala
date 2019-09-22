@@ -152,8 +152,8 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 
 				val relevantBounds: Map[String, Bound] =
 					for (((f, name), d) <- relevantEnclosingLoops)
-							yield name -> {
-								BoundsAnalysis.boundsForProdInCon(boundsGraph, stage.id, f.id, name).getOrElse(throw new Exception())
+							yield d.shadowingName -> {
+								BoundsAnalysis.boundsForProdInCon(boundsGraph, stage.id, f.id, d.shadowingName).getOrElse(throw new Exception())
 							}
 
 				if (relevantBounds.isEmpty) unit(true)
