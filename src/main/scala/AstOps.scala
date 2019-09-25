@@ -249,10 +249,7 @@ trait AstOps extends Ast {
 			}
 		}
 
-		val computeAtDim: Dim = consumer.dim(s) match {
-			case d => d
-			case _ => throw new InvalidSchedule(f"Invalid computeAt var $s")
-		}
+    val computeAtDim: Dim = consumer.vars.getOrElse(s, throw new InvalidSchedule(f"Invalid computeAt var $s"))
 
 		producer.computeAt = Some(computeAtDim)
 
@@ -320,10 +317,7 @@ trait AstOps extends Ast {
 	def storefAtX[T:Typ:Numeric:SepiaNum, U:Typ:Numeric:SepiaNum](sched: N,
 							  producer: Func[T], consumer: Func[U], s: String): N = {
 
-		val storeAtDim: Dim = consumer.dim(s) match {
-			case d => d
-			case _ => throw new InvalidSchedule(f"Invalid storeAt var $s")
-		}
+    val storeAtDim: Dim = consumer.vars.getOrElse(s, throw new InvalidSchedule(f"Invalid storeAt var $s"))
 
 		producer.storeAt = Some(storeAtDim)
 		val newParent = findLoopNodeFor(sched, storeAtDim).getOrElse(throw new InvalidSchedule("Couldn't find consumer"))

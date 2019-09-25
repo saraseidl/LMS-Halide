@@ -82,15 +82,7 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
 
   class SplitDim(min: Rep[Int], max: Rep[Int], name: String, f: Func[_],
                  var outer: Dim, var inner: Dim, val splitFactor: Int, val old: Dim, scope: String) extends Dim(min, max, name, f, scope) {
-      // use this
-      def vOld: Rep[Int] = {
-        val clampedOuter: Rep[Int] =
-          if (outer.v * splitFactor + old.looplb > outer.shadowingUb - splitFactor) outer.shadowingUb - splitFactor - old.looplb
-          else outer.v * splitFactor
-        //clampedOuter + inner.v
-        clampedOuter + inner.v + old.looplb
-      }
-      // CHANGE HACKY not use always
+
       override def v: Rep[Int] = {
         val clampedOuter: Rep[Int] =
           if (outer.v * splitFactor + old.looplb > outer.shadowingUb - splitFactor) outer.shadowingUb - splitFactor - old.looplb
@@ -204,10 +196,21 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
     def domHeight = y.max - y.min
 
     def split(v: String, outer: String, inner: String, splitFactor: Int) = {
-      val innerDim = new Dim(0, splitFactor, inner, this, vars(v).scope)
       // We floor the bottom and ceil at the top to make sure
       // that we hit every value
+      def updateInSplitDim(oldDim: Dim, outerDim: Dim) = {
+        vars.map({ case (s, dim) => {
+          if (dim.isInstanceOf[SplitDim]) {
+            val old = dim.asInstanceOf[SplitDim]
+            if (old.outer == oldDim) old.outer = outerDim
+            else if (old.inner == oldDim) old.inner = outerDim
+          }
+        }})
+      }
+
       val oldDim = vars(v)
+
+      val innerDim = new Dim(0, splitFactor, inner, this, vars(v).scope)
       val outerDim = new OuterDim(0, (oldDim.max - oldDim.min - splitFactor) / splitFactor,
           outer, this, oldDim.shadowingName, oldDim.scaleRatio * splitFactor, oldDim, splitFactor, vars(v).scope)
       vars(v) = new SplitDim(oldDim.min, oldDim.max,
