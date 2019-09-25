@@ -23,8 +23,7 @@ trait GradB extends TestPipeline {
 //    //g.split("y", "y_outer", "y_inner", 2)
 //    h.computeAt(g, "y")
 
-    i.dummyAuto(g)
-
+    i.dummyAuto[Short](64, 64, "cCost")
 
     registerFunction("g", g)
     registerFunction("h", h)
@@ -36,7 +35,7 @@ class GradBlur extends FlatSpec {
   "GradBlur" should "make a blurry boi" in {
     println("five by five blur")
     val blurProg =
-      new GradB with CompilerInstance with Autoscheduler with TestAstOps
+      new GradB with CompilerInstance with AutoSchedulerR with TestAstOps
     val blurProgAnalysis = new GradB with TestPipelineAnalysis
     blurProg.compile(blurProgAnalysis.getBoundsGraph, "grad_blur")
   }
