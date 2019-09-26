@@ -56,7 +56,9 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 		} else {
 			val v = stage.computeAt
 							.getOrElse(throw new InvalidSchedule(f"Non-inlined function $stage has no computeAt variable"))
-			val shouldAdjust = enclosingLoops.keySet contains (v.f, variable.shadowingName)
+
+			val shouldAdjust = (enclosingLoops.keySet contains (v.f, variable.shadowingName)) &&
+												 !(enclosingLoops.keySet contains (stage, variable.shadowingName))
 
 			println(f".........v.f: ${v.f}, variable.shadowingName: ${variable.shadowingName}")
 			println(f".........enclosing Loops: $enclosingLoops")
@@ -74,8 +76,8 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 
 				val baseVar = v.f.vars(variable.shadowingName)
 				val bound = BoundsAnalysis
-						.boundsForProdInCon(boundsGraph, stage.id, v.f.id, variable.scope)
-						.getOrElse(throw new InvalidSchedule(f"No bounds for ${v.name} found"))
+						.boundsForProdInCon(boundsGraph, stage.id, v.f.id, variable.shadowingName)
+						.getOrElse(throw new InvalidSchedule(f"No bounds for ${v.shadowingName} found"))
 
 				// CHANGE - loopBounds
 				// val unadjLb = bound.mulLower * baseVar.v / bound.divLower + bound.lb
@@ -110,21 +112,21 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 			val shouldAdjustX = enclosingLoops.keySet contains (v.f, "x")
 			println(f"......adjustX: $shouldAdjustX")
 			val xDim: Rep[Int] = if (!shouldAdjustX) stage.domWidth else {
-				val xRatio = if (v.scope == "x") enclosingLoops((v.f, v.shadowingName)).scaleRatio else enclosingLoops((v.f, "x")).scaleRatio
+				//val xRatio = if (v.scope == "x") enclosingLoops((v.f, v.shadowingName)).scaleRatio else enclosingLoops((v.f, "x")).scaleRatio
 				BoundsAnalysis
 						 .boundsForProdInCon(boundsGraph, stage.id, v.f.id, "x")
 						 .getOrElse(throw new InvalidSchedule(f"No bounds for ${v.name} found"))
-				     .width - 1 + xRatio
+				     .width - 1 + enclosingLoops((v.f, "x")).scaleRatio
 			}
 
 			val shouldAdjustY = enclosingLoops.keySet contains (v.f, "y")
 			println(f"......adjustY: $shouldAdjustY")
 			val yDim: Rep[Int] = if (!shouldAdjustY) stage.domWidth else {
-				val yRatio = if (v.scope == "y") enclosingLoops((v.f, v.shadowingName)).scaleRatio else enclosingLoops((v.f, "y")).scaleRatio
+				//val yRatio = if (v.scope == "y") enclosingLoops((v.f, v.shadowingName)).scaleRatio else enclosingLoops((v.f, "y")).scaleRatio
 				BoundsAnalysis
 						 .boundsForProdInCon(boundsGraph, stage.id, v.f.id, "y")
 						 .getOrElse(throw new InvalidSchedule(f"No bounds for ${v.name} found"))
-								.width - 1 + yRatio
+								.width - 1 +  enclosingLoops((v.f, "y")).scaleRatio
 			}
 
 			println(f"......storageBounds ($xDim, $yDim)")
@@ -208,7 +210,7 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 				val relevantBounds: Map[String, Bound] =
 					for (((f, name), d) <- relevantEnclosingLoops)
 							yield name -> {
-								BoundsAnalysis.boundsForProdInCon(boundsGraph, stage.id, f.id, d.scope).getOrElse(throw new Exception())
+								BoundsAnalysis.boundsForProdInCon(boundsGraph, stage.id, f.id, d.shadowingName).getOrElse(throw new Exception())
 							}
 
 				if (relevantBounds.isEmpty) unit(true)
@@ -223,10 +225,10 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 						 val v = stage.vars(baseName)
 						 val w = relevantBounds(name).width - 1
 						 val (_, ub): (Rep[Int], Rep[Int]) = computeLoopBounds(v, v.f, boundsGraph, enclosingLoops)
-						 v.v < v.min + w || v.v == ub - 1
+						 v.v < v.min + w //|| v.v == ub - 1
 					 }
 					 relevantBounds.keys.toList.foldLeft(unit(false))({
-						 case (acc, n) => acc || p(n)
+						 case (acc, n) => acc || !p(n)
 					 })
 				 }
 			 }
@@ -253,7 +255,7 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 
 						f.vars.map({ case (k, v) =>
 							val bound = BoundsAnalysis
-								.boundsForProdInCon(boundsGraph, -1, f.id, v.scope)
+								.boundsForProdInCon(boundsGraph, -1, f.id, v.shadowingName)
 								.getOrElse(Bound(0, 0, 1, 1, 1, 1))
 							(k, v.min)}).toList
 
@@ -274,6 +276,7 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 						println("......not compute root:")
 						def getAdjustment(consumer: Func[_], name: String) = {
 							val baseVar = consumer.vars(name)
+							println(baseVar.isInstanceOf[SplitDim])
 							val bound = BoundsAnalysis
 								.boundsForProdInCon(boundsGraph, f.id, consumer.id, name)
 								.getOrElse(throw new InvalidSchedule(f"No bounds for ${name} found"))
@@ -281,9 +284,10 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 						}
 
 						val computeAtFunc = f.computeAt.getOrElse(throw new InvalidSchedule("No compute at for non inlined function")).f
-						f.vars.map({case (name, v) =>
-							(name, if (enclosingLoops.keySet.contains((computeAtFunc, name))) getAdjustment(computeAtFunc, v.scope) else v.min)
-						}).toList
+						f.vars.map({ case (name, v) => {
+							val shouldAdjust = (name == v.shadowingName) && (enclosingLoops.keySet.contains((computeAtFunc, v.shadowingName)))
+							(name, if (shouldAdjust) getAdjustment(computeAtFunc, v.shadowingName) else v.min)
+						}}).toList
 					}
 				}
 			}

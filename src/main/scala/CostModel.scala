@@ -120,9 +120,9 @@ trait CostModel extends PipelineForCompiler with AutoschedulerUtils {
         var newBox = box.adapt(stage.id)
 
         if (variable.isInstanceOf[OuterDim])
-          newBox = newBox.split(variable.scope, variable.asInstanceOf[OuterDim].splitFactor, stage.id)
+          newBox = newBox.split(variable.shadowingName, variable.asInstanceOf[OuterDim].splitFactor, stage.id)
         else
-          newBox = newBox.split(variable.scope, 1, stage.id)
+          newBox = newBox.split(variable.shadowingName, 1, stage.id)
 
         children.foldLeft(boxes)({
           case (b, child) => b ++ pushBox(child, newBox, b)

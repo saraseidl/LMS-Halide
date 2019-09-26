@@ -26,7 +26,7 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
   var nApps = 0
 
   class Dim(val min: Rep[Int], val max: Rep[Int],
-            val name: String, val f: Func[_], val scope: String) {
+            val name: String, val f: Func[_]) {
 		protected var value: Option[Rep[Int]] = None
     // Shading name is the name of the variable, except for
     // outer variables where it is the name of either x or y,
@@ -43,14 +43,24 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
 
 		def v: Rep[Int] = value.getOrElse(throw new InvalidSchedule(f"Unbound variable at $name for $f"))
 
+    def vsave: Rep[Int] = value.getOrElse(0)
+
     def shadowingUb_=(newVal: Rep[Int]) = shadowingUpperBound = Some(newVal)
 
     def shadowingUb(): Rep[Int] = {
       shadowingUpperBound.getOrElse(throw new InvalidSchedule(f"Unbound loopub for $name"))
     }
 
+    def shadowingUbsave(): Rep[Int] = {
+      shadowingUpperBound.getOrElse(0)
+    }
+
     def looplb: Rep[Int] = {
       loopLowerBound.getOrElse(throw new InvalidSchedule(f"Unbound looplb for $name"))
+    }
+
+    def looplbsave: Rep[Int] = {
+      loopLowerBound.getOrElse(0)
     }
 
     def looplb_=(newVal: Rep[Int]) = loopLowerBound = Some(newVal)
@@ -81,19 +91,23 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
 	}
 
   class SplitDim(min: Rep[Int], max: Rep[Int], name: String, f: Func[_],
-                 var outer: Dim, var inner: Dim, val splitFactor: Int, val old: Dim, scope: String) extends Dim(min, max, name, f, scope) {
+                 var outer: Dim, var inner: Dim, val splitFactor: Int, val old: Dim) extends Dim(min, max, name, f) {
 
       override def v: Rep[Int] = {
         val clampedOuter: Rep[Int] =
-          if (outer.v * splitFactor + old.looplb > outer.shadowingUb - splitFactor) outer.shadowingUb - splitFactor - old.looplb
-          else outer.v * splitFactor
+          if (outer.vsave + old.looplbsave > outer.shadowingUbsave - splitFactor) outer.shadowingUbsave - splitFactor - old.looplbsave
+          else outer.vsave
 
-        try {
           // f.vars(inner.shadowingName) to get multiple??
-          clampedOuter + inner.v + old.looplb
-        } catch {
-          case sched: InvalidSchedule => clampedOuter + old.looplb
-        }
+          clampedOuter + inner.vsave + old.looplbsave
+      }
+
+      override def vsave: Rep[Int] = {
+        val clampedOuter: Rep[Int] =
+          if (outer.vsave + old.looplbsave > outer.shadowingUbsave - splitFactor) outer.shadowingUbsave - splitFactor - old.looplbsave
+          else outer.vsave
+
+        clampedOuter + inner.vsave + old.looplbsave
       }
 
       override def v_=(new_val: Rep[Int]) = {
@@ -106,13 +120,17 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
   }
 
   class OuterDim(min: Rep[Int], max: Rep[Int], name: String, f: Func[_],
-                 sName: String, sRatio: Int, val old: Dim, val splitFactor: Int, scope: String) extends Dim(min, max, name, f, scope) {
+                 sName: String, sRatio: Int, val old: Dim, val splitFactor: Int) extends Dim(min, max, name, f) {
       // scale ratio is the ratio of this dimension to the original x or y
       override val scaleRatio = sRatio
       override val shadowingName = sName
       def setOldLoopOffset(v: Rep[Int]) {
         old.loopub_=(v)
       }
+      override def v: Rep[Int] = value.getOrElse(throw new InvalidSchedule(f"Unbound variable at $name for $f")) * splitFactor
+
+      override def vsave: Rep[Int] = splitFactor * super.vsave
+
       // CHANGE override for now to map correctly (otherwise shadowing Name is null)
       override val pseudoLoops: Map[(Func[_], String), Dim] = Map((f, shadowingName) -> this)
 
@@ -122,7 +140,7 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
   }
 
   class FusedDim(min: Rep[Int], max: Rep[Int], name: String, f: Func[_],
-                 val inner: Dim, val outer: Dim, scope: String) extends Dim(min, max, name, f, scope) {
+                 val inner: Dim, val outer: Dim) extends Dim(min, max, name, f) {
     private def innerWidth = inner.loopub - inner.looplb
 
     override def v_=(newVal: Rep[Int]) = {
@@ -146,8 +164,8 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
 
     val domain = Map("x" -> dom._1, "y" -> dom._2)
 
-    val vars = MMap("x" -> new Dim(dom._1._1, dom._1._2, "x", this, "x"),
-                    "y" -> new Dim(dom._2._1, dom._2._2, "y", this, "y"))
+    val vars = MMap("x" -> new Dim(dom._1._1, dom._1._2, "x", this),
+                    "y" -> new Dim(dom._2._1, dom._2._2, "y", this))
     var inlined = true
     var computeRoot = false
     var storeRoot = false
@@ -198,24 +216,28 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
     def split(v: String, outer: String, inner: String, splitFactor: Int) = {
       // We floor the bottom and ceil at the top to make sure
       // that we hit every value
-      def updateInSplitDim(oldDim: Dim, outerDim: Dim) = {
-        vars.map({ case (s, dim) => {
+      def updateSplitDim(oldDim: Dim, newDim: Dim) = {
+        vars.foreach({ case (s, dim) => {
           if (dim.isInstanceOf[SplitDim]) {
-            val old = dim.asInstanceOf[SplitDim]
-            if (old.outer == oldDim) old.outer = outerDim
-            else if (old.inner == oldDim) old.inner = outerDim
+            println("update splitdim")
+            val split = dim.asInstanceOf[SplitDim]
+            if (split.outer == oldDim) split.outer = newDim
+            if (split.inner == oldDim) split.inner = newDim
           }
         }})
       }
 
       val oldDim = vars(v)
 
-      val innerDim = new Dim(0, splitFactor, inner, this, vars(v).scope)
+      val innerDim = new Dim(0, splitFactor, oldDim.shadowingName, this)
       val outerDim = new OuterDim(0, (oldDim.max - oldDim.min - splitFactor) / splitFactor,
-          outer, this, oldDim.shadowingName, oldDim.scaleRatio * splitFactor, oldDim, splitFactor, vars(v).scope)
+          outer, this, oldDim.shadowingName, oldDim.scaleRatio * splitFactor, oldDim, splitFactor)
+
       vars(v) = new SplitDim(oldDim.min, oldDim.max,
                              oldDim.name, oldDim.f,
-                             outerDim, innerDim, splitFactor, oldDim, oldDim.scope)
+                             outerDim, innerDim, splitFactor, oldDim)
+
+      updateSplitDim(oldDim, vars(v))
       vars(outer) = outerDim
       vars(inner) = innerDim
     }
@@ -223,7 +245,7 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
     def fuse(v: String, outer: String, inner: String) = {
       val fusedMin = inner.min + (inner.max - inner.min) * outer.min
       val fuseMax = inner.max + (inner.max - inner.max) * outer.max
-      val fusedVariable = new FusedDim(fusedMin, fuseMax, v, this, vars(inner), vars(outer), vars(inner).scope)
+      val fusedVariable = new FusedDim(fusedMin, fuseMax, v, this, vars(inner), vars(outer))
       vars(v) = fusedVariable
     }
 
@@ -234,14 +256,14 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
       vars.foreach({
         case (name, d) if d.isInstanceOf[OuterDim] => {
           var od: OuterDim = d.asInstanceOf[OuterDim]
-          cp.vars(name) = new OuterDim(od.min, od.max, od.name, cp, od.shadowingName, od.scaleRatio, od.old, od.splitFactor, od.scope)
+          cp.vars(name) = new OuterDim(od.min, od.max, od.name, cp, od.shadowingName, od.scaleRatio, od.old, od.splitFactor)
         }
         case (name, d) if !d.isInstanceOf[SplitDim] => {
-          cp.vars(name) = new Dim(d.min, d.max, d.name, cp, d.scope)
+          cp.vars(name) = new Dim(d.min, d.max, d.name, cp)
         }
         case (name, d) => {
           var sd: SplitDim = d.asInstanceOf[SplitDim]
-          cp.vars(name) = new SplitDim(sd.min, sd.max, sd.name, cp, vars(sd.outer.name), vars(sd.inner.name), sd.splitFactor, sd.old, sd.scope)
+          cp.vars(name) = new SplitDim(sd.min, sd.max, sd.name, cp, vars(sd.outer.name), vars(sd.inner.name), sd.splitFactor, sd.old)
         }
       })
 
