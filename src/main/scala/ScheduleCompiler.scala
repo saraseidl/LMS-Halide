@@ -82,9 +82,9 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 				// CHANGE - loopBounds
 				// val unadjLb = bound.mulLower * baseVar.v / bound.divLower + bound.lb
 				// val unadjUb = bound.mulHigher * baseVar.v / bound.divHigher + bound.ub
-				val unadjLb = bound.mulLower * baseVar.v / bound.divLower + bound.lb
-				val unadjUb = if (baseVar.isInstanceOf[SplitDim])  (bound.mulHigher * baseVar.v + baseVar.asInstanceOf[SplitDim].splitFactor - 1) / bound.divHigher + bound.ub
-											else bound.mulHigher * baseVar.v / bound.divHigher + bound.ub
+				val unadjLb = bound.mulLower * baseVar.v / baseVar.scaleRatio / bound.divLower + bound.lb
+				val unadjUb = if (baseVar.isInstanceOf[SplitDim])  (bound.mulHigher * baseVar.v / baseVar.scaleRatio + baseVar.asInstanceOf[SplitDim].splitFactor - 1) / bound.divHigher + bound.ub
+											else bound.mulHigher * baseVar.v / baseVar.scaleRatio / bound.divHigher + bound.ub
 
 			  variable.looplb_=(unadjLb)
 				variable.shadowingUb_=(unadjUb + 1)
@@ -126,7 +126,7 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 				BoundsAnalysis
 						 .boundsForProdInCon(boundsGraph, stage.id, v.f.id, "y")
 						 .getOrElse(throw new InvalidSchedule(f"No bounds for ${v.name} found"))
-								.width - 1 +  enclosingLoops((v.f, "y")).scaleRatio
+								.width - 1 + enclosingLoops((v.f, "y")).scaleRatio
 			}
 
 			println(f"......storageBounds ($xDim, $yDim)")
@@ -218,6 +218,7 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 					println(f"Bounds: ${relevantBounds.isEmpty}")
 					val consumerVariables: Map[String, Dim] = computeAtFunc.vars.toMap
 
+					 // TODO - see why test7 has weired top
 					 // Generate list for each variable
 					 // v < v.min + overlapSize || v == upperLoopBound
 					 def p(name: String) = {
@@ -240,18 +241,6 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 			sn match {
 				case StorageNode(f, _) => {
 					if (f.computeRoot) {
-						// variable.min
-						// CHANGE - get offsets
-						// only x/y bounds?
-
-						//println("getting offsets from compute root:")
-						// f.vars.map({case (k, v) => {
-						//	val bound = BoundsAnalysis
-						//			 .boundsForProdInCon(boundsGraph, -1, f.id, k)
-						//			 .getOrElse(Bound(0, 0, 1, 1, 1, 1))
-						//	println(f"bound for offset: $bound")
-						//	(k, v.min)}}).toList
-						// CHANGELOG:BOUNDS
 
 						f.vars.map({ case (k, v) =>
 							val bound = BoundsAnalysis
@@ -285,7 +274,7 @@ trait ScheduleCompiler extends CompilerFuncOps with AstOps {
 
 						val computeAtFunc = f.computeAt.getOrElse(throw new InvalidSchedule("No compute at for non inlined function")).f
 						f.vars.map({ case (name, v) => {
-							val shouldAdjust = (name == v.shadowingName) && (enclosingLoops.keySet.contains((computeAtFunc, v.shadowingName)))
+							val shouldAdjust = (enclosingLoops.keySet.contains((computeAtFunc, v.shadowingName)))
 							(name, if (shouldAdjust) getAdjustment(computeAtFunc, v.shadowingName) else v.min)
 						}}).toList
 					}

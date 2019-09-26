@@ -43,6 +43,8 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
 
 		def v: Rep[Int] = value.getOrElse(throw new InvalidSchedule(f"Unbound variable at $name for $f"))
 
+    def vc: Rep[Int] = value.getOrElse(throw new InvalidSchedule(f"Unbound variable at $name for $f"))
+
     def vsave: Rep[Int] = value.getOrElse(0)
 
     def shadowingUb_=(newVal: Rep[Int]) = shadowingUpperBound = Some(newVal)
@@ -93,21 +95,17 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
   class SplitDim(min: Rep[Int], max: Rep[Int], name: String, f: Func[_],
                  var outer: Dim, var inner: Dim, val splitFactor: Int, val old: Dim) extends Dim(min, max, name, f) {
 
+      //vsave is used to support offset calculation up to the level for which v (loop index) is defined
       override def v: Rep[Int] = {
         val clampedOuter: Rep[Int] =
-          if (outer.vsave + old.looplbsave > outer.shadowingUbsave - splitFactor) outer.shadowingUbsave - splitFactor - old.looplbsave
-          else outer.vsave
+          if (outer.vsave * splitFactor + old.looplbsave > outer.shadowingUbsave - splitFactor) outer.shadowingUbsave - splitFactor - old.looplbsave
+          else outer.vsave * splitFactor
 
-          // f.vars(inner.shadowingName) to get multiple??
           clampedOuter + inner.vsave + old.looplbsave
       }
 
       override def vsave: Rep[Int] = {
-        val clampedOuter: Rep[Int] =
-          if (outer.vsave + old.looplbsave > outer.shadowingUbsave - splitFactor) outer.shadowingUbsave - splitFactor - old.looplbsave
-          else outer.vsave
-
-        clampedOuter + inner.vsave + old.looplbsave
+        outer.vsave * splitFactor + inner.vsave
       }
 
       override def v_=(new_val: Rep[Int]) = {
@@ -127,9 +125,7 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
       def setOldLoopOffset(v: Rep[Int]) {
         old.loopub_=(v)
       }
-      override def v: Rep[Int] = value.getOrElse(throw new InvalidSchedule(f"Unbound variable at $name for $f")) * splitFactor
-
-      override def vsave: Rep[Int] = splitFactor * super.vsave
+      override def v: Rep[Int] = value.getOrElse(throw new InvalidSchedule(f"Unbound variable at $name for $f"))
 
       // CHANGE override for now to map correctly (otherwise shadowing Name is null)
       override val pseudoLoops: Map[(Func[_], String), Dim] = Map((f, shadowingName) -> this)
