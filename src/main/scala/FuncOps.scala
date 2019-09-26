@@ -43,8 +43,6 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
 
 		def v: Rep[Int] = value.getOrElse(throw new InvalidSchedule(f"Unbound variable at $name for $f"))
 
-    def vc: Rep[Int] = value.getOrElse(throw new InvalidSchedule(f"Unbound variable at $name for $f"))
-
     def vsave: Rep[Int] = value.getOrElse(0)
 
     def shadowingUb_=(newVal: Rep[Int]) = shadowingUpperBound = Some(newVal)
@@ -128,7 +126,7 @@ trait CompilerFuncOps extends SimpleFuncOps with CompilerImageOps {
       override def v: Rep[Int] = value.getOrElse(throw new InvalidSchedule(f"Unbound variable at $name for $f"))
 
       // CHANGE override for now to map correctly (otherwise shadowing Name is null)
-      override val pseudoLoops: Map[(Func[_], String), Dim] = Map((f, shadowingName) -> this)
+      override val pseudoLoops: Map[(Func[_], String), Dim] = Map((f, shadowingName) -> this, (f, name) -> this)
 
 //      override def v_=(new_val: Rep[Int]) = {
 //        value = Some(new_val)
